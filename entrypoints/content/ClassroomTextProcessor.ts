@@ -2,7 +2,9 @@ import { CLASSROOM_PATTERNS, TARGET_SELECTORS } from "./constants";
 
 export class ClassroomTextProcessor {
     private observer: MutationObserver | null = null;
-    private readonly BROAD_SELECTORS = "a, div, span, h2";
+    private pendingElements = new Set<HTMLElement>();
+    private processedElements = new WeakSet<HTMLElement>();
+    private rafId: number | null = null;
 
     constructor() {
         this.init();
@@ -17,26 +19,39 @@ export class ClassroomTextProcessor {
     }
 
     private start(): void {
-        setTimeout(() => this.processAll(), 500);
-        setTimeout(() => this.processAll(), 1500);
+        this.processAll();
         this.startObserver();
     }
 
     private startObserver(): void {
         this.observer = new MutationObserver((mutationsList) => {
-            let shouldProcess = false;
+            let hasChanges = false;
 
             for (const mutation of mutationsList) {
                 if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
-                    shouldProcess = true;
+                    mutation.addedNodes.forEach((node) => {
+                        if (node.nodeType === Node.ELEMENT_NODE) {
+                            const element = node as HTMLElement;
+
+                            this.pendingElements.add(element);
+
+                            const children = element.querySelectorAll(TARGET_SELECTORS.join(","));
+                            children.forEach((child) => this.pendingElements.add(child as HTMLElement));
+
+                            hasChanges = true;
+                        }
+                    });
                 } else if (mutation.type === "characterData") {
                     const target = mutation.target.parentElement;
-                    if (target) this.processElement(target as HTMLElement);
+                    if (target) {
+                        this.pendingElements.add(target as HTMLElement);
+                        hasChanges = true;
+                    }
                 }
             }
 
-            if (shouldProcess) {
-                this.processAll();
+            if (hasChanges) {
+                this.scheduleBatchProcess();
             }
         });
 
@@ -47,21 +62,36 @@ export class ClassroomTextProcessor {
         });
     }
 
-    private processAll(): void {
-        const selectorString = TARGET_SELECTORS.join(",");
-        const targets = document.querySelectorAll(selectorString);
+    private scheduleBatchProcess(): void {
+        if (this.rafId === null) {
+            this.rafId = requestAnimationFrame(() => {
+                this.processPendingElements();
+                this.rafId = null;
+            });
+        }
+    }
 
+    private processPendingElements(): void {
+        this.pendingElements.forEach((element) => {
+            this.checkAndProcess(element);
+        });
+        this.pendingElements.clear();
+    }
+
+    private processAll(): void {
+        const targets = document.querySelectorAll(TARGET_SELECTORS.join(","));
         targets.forEach((element) => {
-            this.processElement(element as HTMLElement);
+            this.checkAndProcess(element as HTMLElement);
         });
     }
 
-    private processElement(element: HTMLElement): void {
+    private checkAndProcess(element: HTMLElement): void {
+        if (!element.isConnected) return;
+
         const currentText = element.textContent || "";
+        if (currentText.length < 3) return;
 
-        if (!currentText || currentText.length < 3) return;
-
-        if (element.dataset.processedByHidePoster === "true" && !this.needsCleanup(currentText)) {
+        if (this.processedElements.has(element) && !this.needsCleanup(currentText)) {
             return;
         }
 
@@ -84,7 +114,6 @@ export class ClassroomTextProcessor {
                     break;
                 }
             }
-
             if (!processed) {
                 const sangaIndex = newText.indexOf("さんが");
                 if (sangaIndex !== -1) {
@@ -111,6 +140,7 @@ export class ClassroomTextProcessor {
 
         if (processed && element.textContent !== newText) {
             element.textContent = newText;
+            this.processedElements.add(element);
             element.dataset.processedByHidePoster = "true";
         }
     }
@@ -118,19 +148,21 @@ export class ClassroomTextProcessor {
     private needsCleanup(text: string): boolean {
         return (
             /20\d{2}/.test(text) ||
-            /ワークシート/.test(text) ||
-            /WS/.test(text) ||
+            text.includes("ワークシート") ||
+            text.includes("WS") ||
             /[0-9]Q/.test(text) ||
-            /その他/.test(text) ||
+            text.includes("その他") ||
             text.includes("さんが")
         );
     }
 
     private cleanupText(text: string): string {
         if (!text) return "";
+
         text = text.replace(/20\d{2}年度?[_＿\s]?/g, "");
         text = text.replace(/[1-4]Q\d{0,2}[_＿\s]?/g, "");
         text = text.replace(/第\d{1,2}回[_＿\s]?/g, "");
+
         text = text.replace(/ワークシート/g, "");
         text = text.replace(/\bWS\b/g, "");
         text = text.replace(/資料[＆&]?/g, "");
@@ -139,9 +171,11 @@ export class ClassroomTextProcessor {
         text = text.replace(/授業用資料/g, "");
         text = text.replace(/その他/g, "");
         text = text.replace(/アーカイブ/g, "");
+
         text = text.replace(/[_＿\s]{2,}/g, " ");
         text = text.replace(/^[_＿\s]+/, "");
         text = text.replace(/[_＿\s]+$/, "");
+
         text = text.replace(/\(\s*\)/g, "");
         text = text.replace(/（\s*）/g, "");
         text = text.replace(/【\s*】/g, "");
@@ -154,6 +188,10 @@ export class ClassroomTextProcessor {
         if (this.observer) {
             this.observer.disconnect();
             this.observer = null;
+        }
+        if (this.rafId) {
+            cancelAnimationFrame(this.rafId);
+            this.rafId = null;
         }
     }
 }
