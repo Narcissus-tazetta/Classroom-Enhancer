@@ -1,4 +1,4 @@
-export const ROMAJI_REPLACEMENTS: [string, string][] = [
+export const ROMAJI_REPLACEMENTS: ReadonlyArray<readonly [string, string]> = [
     ["shi", "si"],
     ["chi", "ti"],
     ["tsu", "tu"],
@@ -10,9 +10,9 @@ export const ROMAJI_REPLACEMENTS: [string, string][] = [
     ["cha", "tya"],
     ["cho", "tyo"],
     ["chu", "tyu"],
-];
+] as const;
 
-export const CLASSROOM_PATTERNS: RegExp[] = [
+export const CLASSROOM_PATTERNS: readonly RegExp[] = [
     /^(.+?)\s*さんが\s*(.+?)\s*を使用して新しい課題を投稿しました:\s*(.+)$/,
     /^(.+?)\s*さんが\s*(.+?)\s*を使用して(.+?)を投稿しました:\s*(.+)$/,
     /^(.+?)\s*さんが\s*(.+?)\s*を使用して(.+?)を投稿しました\.?\s*(.*)$/,
@@ -23,7 +23,13 @@ export const CLASSROOM_PATTERNS: RegExp[] = [
     /^(.+?)\s*さんが\s*(.+?)しました\.?$/,
 ];
 
-export const TARGET_SELECTORS: string = [
+export const TARGET_SELECTORS: readonly string[] = [
+    ".Cx437e",
+    ".Vu2fZd",
+    ".zo5Hg",
+    ".A6dC2c",
+    "h2.jzdBjc",
+    "a.Vu2fZd",
     'span[class*="VGBb"]',
     'div[class*="VGBb"]',
     'div[class*="QRIHxd"]',
@@ -53,29 +59,18 @@ export const TARGET_SELECTORS: string = [
     'div[class*="CYZpAe"]',
     'span[class*="YVvGBb"]',
     'div[class*="YVvGBb"]',
-    'span[class*="asQXV"]',
-    'div[class*="asQXV"]',
-    'span[class*="announcement"]',
-    'div[class*="announcement"]',
-    'span[class*="assignment"]',
-    'div[class*="assignment"]',
-    'span[class*="stream"]',
-    'div[class*="stream"]',
-].join(", ");
-
-export const DROPDOWN_SELECTORS = [
-    'ul[role="listbox"]',
-    '[role="listbox"]',
-    '[role="menu"]',
-    'div[class*="VfPpkd-xl07Ob"]',
-    'div[class*="VfPpkd-StrnGf"]',
-    'ul[class*="dropdown"]',
-    'div[class*="dropdown-menu"]',
 ];
 
-export const ITEM_SELECTORS = [
-    '[role="option"]',
-    '[role="menuitem"]',
-    'li[class*="VfPpkd"]',
-    'div[class*="VfPpkd-rymPhb"]',
+export const DROPDOWN_SELECTORS: readonly string[] = [
+    'ul[role="listbox"]',
+    'div[role="listbox"]',
+    'div[role="menu"]',
+    ".JPdR6b",
+];
+
+export const ITEM_SELECTORS: readonly string[] = [
+    'li[role="option"]',
+    'div[role="option"]',
+    'div[role="menuitem"]',
+    "span.jB3rtd",
 ];

@@ -1,8 +1,8 @@
-import { ProcessedElement } from "./types";
 import { CLASSROOM_PATTERNS, TARGET_SELECTORS } from "./constants";
 
 export class ClassroomTextProcessor {
     private observer: MutationObserver | null = null;
+    private readonly BROAD_SELECTORS = "a, div, span, h2";
 
     constructor() {
         this.init();
@@ -17,27 +17,26 @@ export class ClassroomTextProcessor {
     }
 
     private start(): void {
-        this.processElementsInNode(document.body);
+        setTimeout(() => this.processAll(), 500);
+        setTimeout(() => this.processAll(), 1500);
         this.startObserver();
     }
 
     private startObserver(): void {
         this.observer = new MutationObserver((mutationsList) => {
+            let shouldProcess = false;
+
             for (const mutation of mutationsList) {
                 if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
-                    for (const node of Array.from(mutation.addedNodes)) {
-                        if (node.nodeType === Node.ELEMENT_NODE) {
-                            this.processElementsInNode(node as HTMLElement);
-                        }
-                    }
-                } else if (mutation.type === "characterData" || mutation.type === "attributes") {
-                    const target = mutation.target;
-                    if (target.nodeType === Node.ELEMENT_NODE) {
-                        this.processTextInElement(target as ProcessedElement);
-                    } else if (target.parentNode && target.parentNode.nodeType === Node.ELEMENT_NODE) {
-                        this.processTextInElement(target.parentNode as ProcessedElement);
-                    }
+                    shouldProcess = true;
+                } else if (mutation.type === "characterData") {
+                    const target = mutation.target.parentElement;
+                    if (target) this.processElement(target as HTMLElement);
                 }
+            }
+
+            if (shouldProcess) {
+                this.processAll();
             }
         });
 
@@ -48,116 +47,107 @@ export class ClassroomTextProcessor {
         });
     }
 
-    private processElementsInNode(node: HTMLElement): void {
-        const potentialMessageElements = node.querySelectorAll(TARGET_SELECTORS);
-        const allSpansAndDivs = node.querySelectorAll("span, div");
-        const allElements = new Set<Element>([...Array.from(potentialMessageElements), ...Array.from(allSpansAndDivs)]);
+    private processAll(): void {
+        const selectorString = TARGET_SELECTORS.join(",");
+        const targets = document.querySelectorAll(selectorString);
 
-        for (const element of allElements) {
-            if (element.tagName === "SPAN" || element.tagName === "DIV") {
-                const text = element.textContent || "";
-
-                if (text.length > 5 && text.includes("さんが")) {
-                    const hasChildWithSanga = Array.from(element.children).some(
-                        (child) => child.textContent && child.textContent.includes("さんが"),
-                    );
-
-                    if (
-                        element.childNodes.length === 0 ||
-                        Array.from(element.childNodes).some(
-                            (childNode) =>
-                                childNode.nodeType === Node.TEXT_NODE && childNode.textContent?.includes("さんが"),
-                        ) ||
-                        (!hasChildWithSanga && text.includes("さんが"))
-                    ) {
-                        this.processTextInElement(element as ProcessedElement);
-                    }
-                }
-            }
-        }
+        targets.forEach((element) => {
+            this.processElement(element as HTMLElement);
+        });
     }
 
-    private processTextInElement(element: ProcessedElement): void {
-        const originalText = element.textContent || "";
+    private processElement(element: HTMLElement): void {
+        const currentText = element.textContent || "";
 
-        if (!originalText.includes("さんが")) {
+        if (!currentText || currentText.length < 3) return;
+
+        if (element.dataset.processedByHidePoster === "true" && !this.needsCleanup(currentText)) {
             return;
         }
 
-        if (element.dataset.processedByHidePoster === "true" && !originalText.includes("さんが")) {
+        if (!this.needsCleanup(currentText)) {
             return;
         }
 
+        let newText = currentText;
         let processed = false;
 
-        for (let i = 0; i < CLASSROOM_PATTERNS.length; i++) {
-            const pattern = CLASSROOM_PATTERNS[i];
-            const match = originalText.match(pattern);
-
-            if (match) {
-                let newText = "";
-
-                switch (i) {
-                    case 0:
-                        newText = match[3] || "";
-                        break;
-                    case 1:
-                    case 2:
-                        newText = match[4] || match[3] || "";
-                        break;
-                    case 3:
-                        newText = match[3] || "";
-                        break;
-                    case 4:
-                        newText = (match[3] && match[3].trim()) || match[2] || "";
-                        break;
-                    default:
-                        newText = match[2] || "";
-                        break;
+        if (newText.includes("さんが")) {
+            for (const pattern of CLASSROOM_PATTERNS) {
+                const match = newText.match(pattern);
+                if (match) {
+                    const extracted = match[3] || match[4] || match[2];
+                    if (extracted) {
+                        newText = extracted.trim();
+                        processed = true;
+                    }
+                    break;
                 }
-
-                element.textContent = newText;
-                element.dataset.processedByHidePoster = "true";
-                processed = true;
-                break;
             }
-        }
 
-        if (!processed) {
-            const sangaIndex = originalText.indexOf("さんが");
-            if (sangaIndex !== -1) {
-                const afterSanga = originalText.substring(sangaIndex + 3).trim();
-                if (afterSanga.length > 0) {
-                    element.textContent = afterSanga;
-                    element.dataset.processedByHidePoster = "true";
+            if (!processed) {
+                const sangaIndex = newText.indexOf("さんが");
+                if (sangaIndex !== -1) {
+                    const parts = newText.split(/[:：]/);
+                    if (parts.length > 1) {
+                        newText = parts[parts.length - 1].trim();
+                    } else {
+                        const afterSanga = newText
+                            .substring(sangaIndex + 3)
+                            .replace(/.*投稿しました\.?/, "")
+                            .trim();
+                        if (afterSanga.length > 0) newText = afterSanga;
+                    }
                     processed = true;
                 }
             }
         }
 
-        if (element.dataset.processedByHidePoster === "true") {
-            element.textContent = this.cleanupText(element.textContent || "");
+        const cleanedText = this.cleanupText(newText);
+        if (cleanedText !== newText) {
+            newText = cleanedText;
+            processed = true;
+        }
+
+        if (processed && element.textContent !== newText) {
+            element.textContent = newText;
+            element.dataset.processedByHidePoster = "true";
         }
     }
 
+    private needsCleanup(text: string): boolean {
+        return (
+            /20\d{2}/.test(text) ||
+            /ワークシート/.test(text) ||
+            /WS/.test(text) ||
+            /[0-9]Q/.test(text) ||
+            /その他/.test(text) ||
+            text.includes("さんが")
+        );
+    }
+
     private cleanupText(text: string): string {
-        text = text.replace(/^20\d{2}年[_＿\s]?/g, "");
-        text = text.replace(/20\d{2}年[_＿\s]/g, "");
-        text = text.replace(/20\d{2}[_＿\s]/g, "");
-        text = text.replace(/[_＿\s]20\d{2}年?/g, "");
-        text = text.replace(/[_＿]20\d{2}/g, "");
-        text = text.replace(/_?ワークシート$/, "");
-        text = text.replace(/ワークシート$/, "");
-        text = text.replace(/^ワークシート[_＿\s]?/, "");
-        text = text.replace(/[_＿\s]ワークシート[_＿\s]?/g, "");
+        if (!text) return "";
+        text = text.replace(/20\d{2}年度?[_＿\s]?/g, "");
+        text = text.replace(/[1-4]Q\d{0,2}[_＿\s]?/g, "");
+        text = text.replace(/第\d{1,2}回[_＿\s]?/g, "");
+        text = text.replace(/ワークシート/g, "");
+        text = text.replace(/\bWS\b/g, "");
+        text = text.replace(/資料[＆&]?/g, "");
+        text = text.replace(/配布資料/g, "");
+        text = text.replace(/解説資料/g, "");
+        text = text.replace(/授業用資料/g, "");
+        text = text.replace(/その他/g, "");
+        text = text.replace(/アーカイブ/g, "");
+        text = text.replace(/[_＿\s]{2,}/g, " ");
         text = text.replace(/^[_＿\s]+/, "");
         text = text.replace(/[_＿\s]+$/, "");
-        text = text.replace(/[_＿]{2,}/g, "_");
-        text = text.replace(/[_＿\s]{2,}/g, " ");
-        text = text.trim();
-        text = text.replace(/^[_＿\-\s]+/, "");
-        text = text.replace(/[_＿\-\s]+$/, "");
-        return text;
+        text = text.replace(/\(\s*\)/g, "");
+        text = text.replace(/（\s*）/g, "");
+        text = text.replace(/【\s*】/g, "");
+        text = text.replace(/\[\s*\]/g, "");
+
+        return text.trim();
     }
 
     public destroy(): void {

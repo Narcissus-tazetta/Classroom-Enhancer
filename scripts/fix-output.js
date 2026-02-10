@@ -4,6 +4,18 @@ const path = require("path");
 const root = process.env.FIX_OUTPUT_ROOT ? path.resolve(process.env.FIX_OUTPUT_ROOT) : path.resolve(__dirname, "..");
 const distDir = path.join(root, "dist");
 
+// Load package.json version to ensure built manifests reflect project version
+let projectVersion = null;
+try {
+    const pkgPath = path.join(root, "package.json");
+    if (fs.existsSync(pkgPath)) {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+        projectVersion = pkg.version || null;
+    }
+} catch (e) {
+    // ignore
+}
+
 function inspectManifestDir(dirPath) {
     const manifestPath = path.join(dirPath, "manifest.json");
     if (!fs.existsSync(manifestPath)) return null;
@@ -187,6 +199,12 @@ function patchManifests() {
                 manifest.browser_specific_settings.gecko = manifest.browser_specific_settings.gecko || {};
                 manifest.browser_specific_settings.gecko.id = "classroom-enhancer@narcissus-tazetta.github.io";
                 console.log(`Patched browser_specific_settings.gecko.id in ${mPath}`);
+            }
+
+            // Ensure manifest version matches package.json
+            if (projectVersion) {
+                manifest.version = projectVersion;
+                console.log(`Patched manifest.version=${projectVersion} in ${mPath}`);
             }
 
             fs.writeFileSync(mPath, JSON.stringify(manifest, null, 4), "utf8");
