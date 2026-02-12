@@ -201,6 +201,20 @@ function patchManifests() {
                 console.log(`Patched browser_specific_settings.gecko.id in ${mPath}`);
             }
 
+            // For Manifest V2 (Firefox), move host_permissions into permissions to avoid unsupported property warnings
+            if (
+                manifest.manifest_version === 2 &&
+                Array.isArray(manifest.host_permissions) &&
+                manifest.host_permissions.length > 0
+            ) {
+                manifest.permissions = Array.isArray(manifest.permissions) ? manifest.permissions : [];
+                for (const hp of manifest.host_permissions) {
+                    if (!manifest.permissions.includes(hp)) manifest.permissions.push(hp);
+                }
+                delete manifest.host_permissions;
+                console.log(`Moved host_permissions -> permissions in ${mPath} for MV2 compatibility`);
+            }
+
             // Ensure manifest version matches package.json
             if (projectVersion) {
                 manifest.version = projectVersion;
@@ -214,9 +228,41 @@ function patchManifests() {
     }
 }
 
+function repackZips() {
+    // Recreate dist/*.zip so their contents are stored at the zip root (manifest.json at root)
+    try {
+        const browsers = ["chrome", "firefox"];
+        for (const b of browsers) {
+            const zipPath = path.join(distDir, `${b}.zip`);
+            const dirPath = path.join(distDir, b);
+            if (!fs.existsSync(dirPath)) continue;
+
+            // Remove any old zip first to avoid accidental appending
+            if (fs.existsSync(zipPath)) fs.rmSync(zipPath);
+
+            // Create a new zip from contents of the directory (use '*' so entries are at root)
+            const tmpZip = `${zipPath}.tmp`;
+            if (fs.existsSync(tmpZip)) fs.rmSync(tmpZip);
+
+            // If zip is available, use it; otherwise warn
+            try {
+                const cmd = `cd ${dirPath} && zip -r ${tmpZip} * -x "__MACOSX/*"`;
+                require("child_process").execSync(cmd, { stdio: "inherit" });
+                fs.renameSync(tmpZip, zipPath);
+                console.log(`Created ${zipPath} with manifest at root`);
+            } catch (e) {
+                console.warn(`zip command failed for ${b}:`, e.message || e);
+            }
+        }
+    } catch (e) {
+        console.warn("Failed to repack zips:", e.message || e);
+    }
+}
+
 if (require.main === module) {
     reorganizeDist();
     patchManifests();
+    repackZips();
 }
 
-module.exports = { reorganizeDist, patchManifests, identifyBrowser, inspectManifestDir };
+module.exports = { reorganizeDist, patchManifests, repackZips, identifyBrowser, inspectManifestDir };

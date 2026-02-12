@@ -1,5 +1,6 @@
 import { defineConfig } from "wxt";
 import common from "./manifest.common.json";
+import pkg from "./package.json";
 
 function mergeManifests(base: any, override: any) {
     const out = JSON.parse(JSON.stringify(base));
@@ -44,16 +45,17 @@ export default defineConfig({
     manifest: ({ browser }) => {
         if (browser === "firefox") {
             return mergeManifests(common, {
-                permissions: ["storage"],
+                permissions: ["storage", "https://classroom.google.com/*"],
                 browser_specific_settings: {
                     gecko: { id: "classroom-enhancer@narcissus-tazetta.github.io" },
                 },
-                version: "1.0.2",
+                version: pkg.version,
             });
         }
         return mergeManifests(common, {
             permissions: ["activeTab", "scripting", "storage"],
-            version: "1.0.2",
+            host_permissions: ["https://classroom.google.com/*"],
+            version: pkg.version,
         });
     },
 });

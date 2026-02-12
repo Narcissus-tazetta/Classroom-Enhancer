@@ -5,6 +5,8 @@ export class ClassroomTextProcessor {
     private pendingElements = new Set<HTMLElement>();
     private processedElements = new WeakSet<HTMLElement>();
     private rafId: number | null = null;
+    private recheckIntervalId: number | null = null;
+    private recheckStopTimeoutId: number | null = null;
 
     constructor() {
         this.init();
@@ -19,8 +21,81 @@ export class ClassroomTextProcessor {
     }
 
     private start(): void {
+        // Classroomは遅延描画/再レンダが多いので、初期は複数回走らせて取りこぼしを減らす
         this.processAll();
+        setTimeout(() => this.processAll(), 500);
+        setTimeout(() => this.processAll(), 1500);
+        setTimeout(() => this.processAll(), 3000);
+        this.startRecheckLoop();
         this.startObserver();
+    }
+
+    private startRecheckLoop(): void {
+        // Firefoxでは授業タブの一覧が遅延で再レンダリングされ、こちらの書き換えが戻されることがある。
+        // 永続的なsetIntervalは重いので、短時間だけ再適用する。
+        if (this.recheckIntervalId != null) return;
+
+        this.recheckIntervalId = window.setInterval(() => {
+            this.processAll();
+        }, 1000);
+
+        this.recheckStopTimeoutId = window.setTimeout(() => {
+            if (this.recheckIntervalId != null) {
+                window.clearInterval(this.recheckIntervalId);
+                this.recheckIntervalId = null;
+            }
+            this.recheckStopTimeoutId = null;
+        }, 20000);
+    }
+
+    private isInteractiveOrIconElement(element: HTMLElement): boolean {
+        return !!(
+            element.closest(
+                '[role="menu"], [role="menuitem"], [role="listbox"], [role="option"], button, [role="button"], input, textarea, select',
+            ) || element.matches?.('.material-icons, [class*="material-icons"]')
+        );
+    }
+
+    private containsInteractiveOrIconDescendants(element: HTMLElement): boolean {
+        return !!element.querySelector(
+            'button, [role="button"], [role="menu"], [role="menuitem"], [role="listbox"], [role="option"], input, textarea, select, .material-icons, [class*="material-icons"]',
+        );
+    }
+
+    private extractAndCleanupText(rawText: string): string {
+        let text = rawText;
+
+        if (text.includes("さんが")) {
+            for (const pattern of CLASSROOM_PATTERNS) {
+                const match = text.match(pattern);
+                if (match) {
+                    const extracted = match[3] || match[4] || match[2];
+                    if (extracted) {
+                        text = extracted.trim();
+                    }
+                    break;
+                }
+            }
+
+            // フォールバック（正規表現で漏れた場合）
+            if (text.includes("さんが")) {
+                const sangaIndex = text.indexOf("さんが");
+                if (sangaIndex !== -1) {
+                    const parts = text.split(/[:：]/);
+                    if (parts.length > 1) {
+                        text = parts[parts.length - 1].trim();
+                    } else {
+                        const afterSanga = text
+                            .substring(sangaIndex + 3)
+                            .replace(/.*投稿しました\.?/, "")
+                            .trim();
+                        if (afterSanga.length > 0) text = afterSanga;
+                    }
+                }
+            }
+        }
+
+        return this.cleanupText(text);
     }
 
     private startObserver(): void {
@@ -88,6 +163,45 @@ export class ClassroomTextProcessor {
     private checkAndProcess(element: HTMLElement): void {
         if (!element.isConnected) return;
 
+        if (this.isInteractiveOrIconElement(element)) {
+            return;
+        }
+
+        const hasInteractiveDescendants = this.containsInteractiveOrIconDescendants(element);
+
+        if (hasInteractiveDescendants) {
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+                acceptNode: (node) => {
+                    const textNode = node as Text;
+                    const parent = textNode.parentElement;
+                    if (!parent) return NodeFilter.FILTER_REJECT;
+                    if (this.isInteractiveOrIconElement(parent)) return NodeFilter.FILTER_REJECT;
+                    if (parent.closest('.material-icons, [class*="material-icons"]')) return NodeFilter.FILTER_REJECT;
+                    return NodeFilter.FILTER_ACCEPT;
+                },
+            });
+
+            let changed = false;
+            let textNode: Text | null;
+            while ((textNode = walker.nextNode() as Text | null)) {
+                const raw = textNode.nodeValue || "";
+                if (raw.trim().length < 3) continue;
+                if (!this.needsCleanup(raw)) continue;
+
+                const cleaned = this.extractAndCleanupText(raw);
+                if (cleaned !== raw) {
+                    textNode.nodeValue = cleaned;
+                    changed = true;
+                }
+            }
+
+            if (changed) {
+                this.processedElements.add(element);
+                element.dataset.processedByHidePoster = "true";
+            }
+            return;
+        }
+
         const currentText = element.textContent || "";
         if (currentText.length < 3) return;
 
@@ -99,47 +213,9 @@ export class ClassroomTextProcessor {
             return;
         }
 
-        let newText = currentText;
-        let processed = false;
-
-        if (newText.includes("さんが")) {
-            for (const pattern of CLASSROOM_PATTERNS) {
-                const match = newText.match(pattern);
-                if (match) {
-                    const extracted = match[3] || match[4] || match[2];
-                    if (extracted) {
-                        newText = extracted.trim();
-                        processed = true;
-                    }
-                    break;
-                }
-            }
-            if (!processed) {
-                const sangaIndex = newText.indexOf("さんが");
-                if (sangaIndex !== -1) {
-                    const parts = newText.split(/[:：]/);
-                    if (parts.length > 1) {
-                        newText = parts[parts.length - 1].trim();
-                    } else {
-                        const afterSanga = newText
-                            .substring(sangaIndex + 3)
-                            .replace(/.*投稿しました\.?/, "")
-                            .trim();
-                        if (afterSanga.length > 0) newText = afterSanga;
-                    }
-                    processed = true;
-                }
-            }
-        }
-
-        const cleanedText = this.cleanupText(newText);
-        if (cleanedText !== newText) {
-            newText = cleanedText;
-            processed = true;
-        }
-
-        if (processed && element.textContent !== newText) {
-            element.textContent = newText;
+        const cleaned = this.extractAndCleanupText(currentText);
+        if (cleaned !== currentText && element.textContent !== cleaned) {
+            element.textContent = cleaned;
             this.processedElements.add(element);
             element.dataset.processedByHidePoster = "true";
         }
@@ -159,11 +235,11 @@ export class ClassroomTextProcessor {
     private cleanupText(text: string): string {
         if (!text) return "";
 
-        text = text.replace(/20\d{2}年度?[_＿\s]?/g, "");
-        text = text.replace(/[1-4]Q\d{0,2}[_＿\s]?/g, "");
-        text = text.replace(/第\d{1,2}回[_＿\s]?/g, "");
-
+        // 年度の削除（2025年_ / 2025年度_ / 2025_ など）
+        text = text.replace(/20\d{2}(?:年(?:度)?|年度?)[_＿\s]*/g, "");
+        text = text.replace(/^20\d{2}[_＿\s]+/g, "");
         text = text.replace(/ワークシート/g, "");
+        text = text.replace(/シート$/g, "");
         text = text.replace(/\bWS\b/g, "");
         text = text.replace(/資料[＆&]?/g, "");
         text = text.replace(/配布資料/g, "");
@@ -192,6 +268,14 @@ export class ClassroomTextProcessor {
         if (this.rafId) {
             cancelAnimationFrame(this.rafId);
             this.rafId = null;
+        }
+        if (this.recheckIntervalId != null) {
+            window.clearInterval(this.recheckIntervalId);
+            this.recheckIntervalId = null;
+        }
+        if (this.recheckStopTimeoutId != null) {
+            window.clearTimeout(this.recheckStopTimeoutId);
+            this.recheckStopTimeoutId = null;
         }
     }
 }
