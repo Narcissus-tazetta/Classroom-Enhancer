@@ -20,7 +20,6 @@ try {
 
     const matches = ["https://classroom.google.com/*"];
 
-    // Chrome manifest with duplicate content script entries
     const chromeManifest = {
         content_scripts: [
             { matches, js: ["content.js"], run_at: "document_end" },
@@ -29,7 +28,6 @@ try {
         permissions: ["activeTab"],
     };
 
-    // Firefox manifest with duplicate entries and missing gecko id
     const firefoxManifest = {
         content_scripts: [
             { matches, js: ["content.js"], run_at: "document_end" },
@@ -41,20 +39,15 @@ try {
     writeJSON(path.join(chromeSrc, "manifest.json"), chromeManifest);
     writeJSON(path.join(firefoxSrc, "manifest.json"), firefoxManifest);
 
-    // Set FIX_OUTPUT_ROOT so the script operates on our tmp repo
     process.env.FIX_OUTPUT_ROOT = root;
 
     const fix = require("./fix-output");
 
-    // Run the functions under test
     fix.reorganizeDist();
     fix.patchManifests();
-
-    // Validate chrome
     const chromeFinal = JSON.parse(fs.readFileSync(path.join(root, "dist", "chrome", "manifest.json"), "utf8"));
     assert.strictEqual(chromeFinal.manifest_version, 3, "Chrome manifest_version should be 3");
     assert.ok(Array.isArray(chromeFinal.content_scripts), "chrome.content_scripts should be array");
-    // Expect single entry for the matches and prefer content-scripts/content.js
     const chromeEntry = chromeFinal.content_scripts.find((e) => JSON.stringify(e.matches) === JSON.stringify(matches));
     assert.ok(chromeEntry, "chrome content_scripts entry exists");
     assert.ok(chromeEntry.js.includes("content-scripts/content.js"), "chrome should prefer content-scripts/content.js");
@@ -63,7 +56,6 @@ try {
         "no duplicate content.js when content-scripts exists",
     );
 
-    // Validate firefox
     const firefoxFinal = JSON.parse(fs.readFileSync(path.join(root, "dist", "firefox", "manifest.json"), "utf8"));
     assert.strictEqual(firefoxFinal.manifest_version, 2, "Firefox manifest_version should be 2");
     assert.ok(

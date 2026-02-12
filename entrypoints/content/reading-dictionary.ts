@@ -6,13 +6,12 @@ const CACHE_PREFIX = "furigana:";
 const memoryCache = new Map<string, CacheEntry>();
 
 async function getStorageCache(key: string): Promise<CacheEntry | null> {
-    return new Promise(resolve => {
-        chrome.storage.local.get([key], result => {
+    return new Promise((resolve) => {
+        chrome.storage.local.get([key], (result) => {
             const entry = result[key];
             const parseResult = CacheEntrySchema.safeParse(entry);
             if (!parseResult.success) {
-                console.warn("Invalid storage cache entry:", key);
-                resolve(null);
+                chrome.storage.local.remove([key], () => resolve(null));
                 return;
             }
             resolve(parseResult.data);
@@ -21,7 +20,7 @@ async function getStorageCache(key: string): Promise<CacheEntry | null> {
 }
 
 async function setStorageCache(key: string, entry: CacheEntry): Promise<void> {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
         chrome.storage.local.set({ [key]: entry }, () => resolve());
     });
 }
@@ -49,6 +48,27 @@ function setMemoryCache(key: string, value: string): void {
     memoryCache.set(key, { value, ts: Date.now() });
 }
 
+async function clearInvalidCache(): Promise<void> {
+    return new Promise((resolve) => {
+        chrome.storage.local.get(null, (allItems) => {
+            const invalidKeys: string[] = [];
+            for (const [key, value] of Object.entries(allItems)) {
+                if (key.startsWith(CACHE_PREFIX)) {
+                    const parseResult = CacheEntrySchema.safeParse(value);
+                    if (!parseResult.success) {
+                        invalidKeys.push(key);
+                    }
+                }
+            }
+            if (invalidKeys.length > 0) {
+                chrome.storage.local.remove(invalidKeys, () => resolve());
+            } else {
+                resolve();
+            }
+        });
+    });
+}
+
 async function requestFurigana(text: string): Promise<string | null> {
     const API_URL = "https://classroom-enhancer.ibaragiakira2007.workers.dev";
 
@@ -62,24 +82,62 @@ async function requestFurigana(text: string): Promise<string | null> {
         const rawData = await response.json();
         const parseResult = FuriganaResponseSchema.safeParse(rawData);
 
-        if (!parseResult.success) {
-            console.error("API response validation failed:", parseResult.error);
+        if (parseResult.success) {
+            if (typeof parseResult.data.furigana === "string" && parseResult.data.furigana.length > 0) {
+                return parseResult.data.furigana;
+            }
+            if (parseResult.data.result?.word) {
+                return parseResult.data.result.word.map((w) => w.roman ?? w.surface ?? "").join("");
+            }
             return null;
         }
+        try {
+            const yahooWords: any[] | undefined = rawData?.result?.word;
+            if (Array.isArray(yahooWords) && yahooWords.length > 0) {
+                const reading = yahooWords
+                    .map((word: any) => {
+                        if (typeof word?.furigana === "string" && word.furigana.length > 0) {
+                            return word.furigana;
+                        }
+                        if (Array.isArray(word?.furigana)) {
+                            return word.furigana.map((x: any) => String(x ?? "")).join("");
+                        }
+                        if (word && typeof word?.furigana === "object") {
+                            try {
+                                return JSON.stringify(word.furigana);
+                            } catch {}
+                        }
+                        if (Array.isArray(word?.subword) && word.subword.length > 0) {
+                            return word.subword
+                                .map((sub: any) => {
+                                    if (typeof sub?.furigana === "string" && sub.furigana.length > 0) {
+                                        return sub.furigana;
+                                    }
+                                    if (Array.isArray(sub?.furigana)) {
+                                        return sub.furigana.map((x: any) => String(x ?? "")).join("");
+                                    }
+                                    return sub.surface ?? "";
+                                })
+                                .join("");
+                        }
+                        return word.surface ?? "";
+                    })
+                    .join("");
 
-        if (parseResult.data.result?.word) {
-            return parseResult.data.result.word.map(w => w.roman ?? w.surface ?? "").join("");
-        }
+                if (reading && reading.length > 0) {
+                    return reading;
+                }
+            }
+        } catch {}
 
         return null;
-    } catch (error) {
-        console.error("Furigana fetch failed:", error);
+    } catch {
         return null;
     }
 }
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
     let timeoutId: number | undefined;
-    const timeoutPromise = new Promise<null>(resolve => {
+    const timeoutPromise = new Promise<null>((resolve) => {
         timeoutId = window.setTimeout(() => resolve(null), timeoutMs);
     });
     const result = await Promise.race([promise, timeoutPromise]);
@@ -88,6 +146,8 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
     }
     return result as T | null;
 }
+
+void clearInvalidCache();
 
 export async function getReadingWithFallback(text: string): Promise<string> {
     const normalized = text.normalize("NFKC").trim();

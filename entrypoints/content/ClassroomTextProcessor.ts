@@ -37,17 +37,14 @@ export class ClassroomTextProcessor {
     }
 
     private start(): void {
-        // Classroomは遅延描画/再レンダが多いので、初期は複数回走らせて取りこぼしを減らす
         this.processAll();
         const delays = [500, 1500, 3000];
-        delays.forEach(delay => setTimeout(() => this.processAll(), delay));
+        delays.forEach((delay) => setTimeout(() => this.processAll(), delay));
         this.startRecheckLoop();
         this.startObserver();
     }
 
     private startRecheckLoop(): void {
-        // Firefoxでは授業タブの一覧が遅延で再レンダリングされ、こちらの書き換えが戻されることがある。
-        // 永続的なsetIntervalは重いので、短時間だけ再適用する。
         if (this.recheckIntervalId != null) {
             return;
         }
@@ -94,7 +91,6 @@ export class ClassroomTextProcessor {
                 }
             }
 
-            // フォールバック（正規表現で漏れた場合）
             if (text.includes("さんが")) {
                 const sangaIndex = text.indexOf("さんが");
                 if (sangaIndex !== -1) {
@@ -118,19 +114,19 @@ export class ClassroomTextProcessor {
     }
 
     private startObserver(): void {
-        this.observer = new MutationObserver(mutationsList => {
+        this.observer = new MutationObserver((mutationsList) => {
             let hasChanges = false;
 
             for (const mutation of mutationsList) {
                 if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
-                    mutation.addedNodes.forEach(node => {
+                    mutation.addedNodes.forEach((node) => {
                         if (node.nodeType === Node.ELEMENT_NODE) {
                             const element = node as HTMLElement;
 
                             this.pendingElements.add(element);
 
                             const children = element.querySelectorAll(TARGET_SELECTORS.join(","));
-                            children.forEach(child => this.pendingElements.add(child as HTMLElement));
+                            children.forEach((child) => this.pendingElements.add(child as HTMLElement));
 
                             hasChanges = true;
                         }
@@ -166,7 +162,7 @@ export class ClassroomTextProcessor {
     }
 
     private processPendingElements(): void {
-        this.pendingElements.forEach(element => {
+        this.pendingElements.forEach((element) => {
             this.checkAndProcess(element);
         });
         this.pendingElements.clear();
@@ -174,7 +170,7 @@ export class ClassroomTextProcessor {
 
     private processAll(): void {
         const targets = document.querySelectorAll(TARGET_SELECTORS.join(","));
-        targets.forEach(element => {
+        targets.forEach((element) => {
             this.checkAndProcess(element as HTMLElement);
         });
     }
@@ -192,7 +188,7 @@ export class ClassroomTextProcessor {
 
         if (hasInteractiveDescendants) {
             const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
-                acceptNode: node => {
+                acceptNode: (node) => {
                     const textNode = node as Text;
                     const parent = textNode.parentElement;
                     if (!parent) {
@@ -272,17 +268,14 @@ export class ClassroomTextProcessor {
 
         let result = text;
 
-        // 定義済みパターンで置換
         for (const { regex, replacement } of CLEANUP_PATTERNS) {
             result = result.replace(regex, replacement);
         }
 
-        // 空白文字の正規化
         result = result.replace(/[_＿\s]{2,}/g, " ");
         result = result.replace(/^[_＿\s]+/, "");
         result = result.replace(/[_＿\s]+$/, "");
 
-        // 空括弧の削除
         for (const pattern of EMPTY_BRACKETS_PATTERNS) {
             result = result.replace(pattern, "");
         }

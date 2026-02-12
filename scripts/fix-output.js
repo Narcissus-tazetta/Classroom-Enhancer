@@ -4,7 +4,6 @@ const path = require("path");
 const root = process.env.FIX_OUTPUT_ROOT ? path.resolve(process.env.FIX_OUTPUT_ROOT) : path.resolve(__dirname, "..");
 const distDir = path.join(root, "dist");
 
-// Load package.json version to ensure built manifests reflect project version
 let projectVersion = null;
 try {
     const pkgPath = path.join(root, "package.json");
@@ -12,9 +11,7 @@ try {
         const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
         projectVersion = pkg.version || null;
     }
-} catch (e) {
-    // ignore
-}
+} catch {}
 
 function inspectManifestDir(dirPath) {
     const manifestPath = path.join(dirPath, "manifest.json");
@@ -43,26 +40,21 @@ function getBuiltFolders() {
 
 function identifyBrowser(folderName, manifest) {
     if (manifest) {
-        // Check if Firefox-specific settings are present
         if (manifest.browser_specific_settings && manifest.browser_specific_settings.gecko) {
             return "firefox";
         }
-        // Check manifest_version
         if (manifest.manifest_version === 2) {
             return "firefox";
         }
         if (manifest.manifest_version === 3) {
             return "chrome";
         }
-        // Check for background.service_worker (MV3)
         if (manifest.background && manifest.background.service_worker) {
             return "chrome";
         }
-        // Check for browser_action (MV2)
         if (manifest.browser_action && !manifest.action) {
             return "firefox";
         }
-        // Check for action (MV3)
         if (manifest.action && !manifest.browser_action) {
             return "chrome";
         }
@@ -83,19 +75,16 @@ function reorganizeDist() {
 
         const renames = {};
 
-        // First, identify all folders
         for (const folder of folders) {
             const fullPath = path.join(distDir, folder);
             const manifest = inspectManifestDir(fullPath);
             let browser = identifyBrowser(folder, manifest);
 
-            // If we have conflicting identifications, use folder name as fallback
             if (!browser) {
                 if (folder.includes("chrome")) browser = "chrome";
                 else if (folder.includes("firefox")) browser = "firefox";
             }
 
-            // For ambiguous cases, use order: first "chrome*" -> chrome, next -> firefox
             if (browser === "firefox" && folder.includes("chrome") && !renames.chrome) {
                 browser = "chrome";
             }
@@ -114,7 +103,6 @@ function reorganizeDist() {
 
         console.log("Determined renames:", renames);
 
-        // Apply renames
         for (const [targetName, sourceFolder] of Object.entries(renames)) {
             const sourceFullPath = path.join(distDir, sourceFolder);
             const targetFullPath = path.join(distDir, targetName);
@@ -128,7 +116,6 @@ function reorganizeDist() {
             }
         }
 
-        // Remove any extra folders
         const finalFolders = fs.readdirSync(distDir).filter((d) => {
             const fullPath = path.join(distDir, d);
             return fs.lstatSync(fullPath).isDirectory();
@@ -149,7 +136,6 @@ function reorganizeDist() {
     }
 }
 
-// Ensure manifest_version present and patch Firefox gecko id if missing
 function patchManifests() {
     for (const b of ["chrome", "firefox"]) {
         const mPath = path.join(distDir, b, "manifest.json");
@@ -158,7 +144,6 @@ function patchManifests() {
             const raw = fs.readFileSync(mPath, "utf8");
             const manifest = JSON.parse(raw);
 
-            // Normalize and deduplicate content_scripts entries if present
             if (manifest.content_scripts && Array.isArray(manifest.content_scripts)) {
                 const groups = new Map();
                 for (const entry of manifest.content_scripts) {
@@ -173,7 +158,6 @@ function patchManifests() {
 
                 const normalized = [];
                 for (const g of groups.values()) {
-                    // Prefer wxt-generated path if present
                     if (g.js.has("content-scripts/content.js")) {
                         g.js.delete("content.js");
                         g.js.add("content-scripts/content.js");
@@ -201,7 +185,6 @@ function patchManifests() {
                 console.log(`Patched browser_specific_settings.gecko.id in ${mPath}`);
             }
 
-            // For Manifest V2 (Firefox), move host_permissions into permissions to avoid unsupported property warnings
             if (
                 manifest.manifest_version === 2 &&
                 Array.isArray(manifest.host_permissions) &&
@@ -215,7 +198,6 @@ function patchManifests() {
                 console.log(`Moved host_permissions -> permissions in ${mPath} for MV2 compatibility`);
             }
 
-            // Ensure manifest version matches package.json
             if (projectVersion) {
                 manifest.version = projectVersion;
                 console.log(`Patched manifest.version=${projectVersion} in ${mPath}`);
@@ -229,22 +211,17 @@ function patchManifests() {
 }
 
 function repackZips() {
-    // Recreate dist/*.zip so their contents are stored at the zip root (manifest.json at root)
     try {
         const browsers = ["chrome", "firefox"];
         for (const b of browsers) {
             const zipPath = path.join(distDir, `${b}.zip`);
             const dirPath = path.join(distDir, b);
             if (!fs.existsSync(dirPath)) continue;
-
-            // Remove any old zip first to avoid accidental appending
             if (fs.existsSync(zipPath)) fs.rmSync(zipPath);
 
-            // Create a new zip from contents of the directory (use '*' so entries are at root)
             const tmpZip = `${zipPath}.tmp`;
             if (fs.existsSync(tmpZip)) fs.rmSync(tmpZip);
 
-            // If zip is available, use it; otherwise warn
             try {
                 const cmd = `cd ${dirPath} && zip -r ${tmpZip} * -x "__MACOSX/*"`;
                 require("child_process").execSync(cmd, { stdio: "inherit" });

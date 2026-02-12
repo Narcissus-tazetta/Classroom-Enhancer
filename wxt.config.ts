@@ -49,8 +49,8 @@ export default defineConfig({
     manifest: ({ browser }) => {
         if (browser === "firefox") {
             return mergeManifests(common, {
-                permissions: [
-                    "storage",
+                permissions: ["storage"],
+                host_permissions: [
                     "https://classroom.google.com/*",
                     "https://classroom-enhancer.ibaragiakira2007.workers.dev/*",
                 ],
