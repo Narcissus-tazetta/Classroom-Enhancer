@@ -1,29 +1,47 @@
-export default {
-    async fetch(request: Request, env: { YAHOO_APP_ID: string }, ctx: ExecutionContext): Promise<Response> {
-        const corsHeaders = {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
-        };
+import { FuriganaRequestSchema, YahooFuriganaResponseSchema } from "../lib/schemas";
 
+const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+} as const;
+
+export default {
+    async fetch(request: Request, env: { YAHOO_APP_ID: string; }, ctx: ExecutionContext): Promise<Response> {
         if (request.method === "OPTIONS") {
             return new Response(null, { headers: corsHeaders });
         }
 
-        if (request.method !== "POST") {
+        let q = "";
+
+        if (request.method === "GET") {
+            const url = new URL(request.url);
+            const queryParam = url.searchParams.get("q");
+            const parseResult = FuriganaRequestSchema.safeParse({ q: queryParam });
+            if (!parseResult.success) {
+                return new Response(JSON.stringify({ error: "Invalid query", details: parseResult.error.issues }), {
+                    status: 400,
+                    headers: { ...corsHeaders, "Content-Type": "application/json" },
+                });
+            }
+            q = parseResult.data.q;
+        } else if (request.method === "POST") {
+            let body: unknown = null;
+            try {
+                body = await request.json();
+            } catch {
+                return new Response("Invalid JSON", { status: 400, headers: corsHeaders });
+            }
+            const parseResult = FuriganaRequestSchema.safeParse(body);
+            if (!parseResult.success) {
+                return new Response(JSON.stringify({ error: "Invalid body", details: parseResult.error.issues }), {
+                    status: 400,
+                    headers: { ...corsHeaders, "Content-Type": "application/json" },
+                });
+            }
+            q = parseResult.data.q;
+        } else {
             return new Response("Method not allowed", { status: 405, headers: corsHeaders });
-        }
-
-        let body: { q?: unknown } | null = null;
-        try {
-            body = (await request.json()) as { q?: unknown };
-        } catch {
-            return new Response("Invalid JSON", { status: 400, headers: corsHeaders });
-        }
-
-        const q = typeof body?.q === "string" ? body.q.trim() : "";
-        if (!q) {
-            return new Response("Missing query", { status: 400, headers: corsHeaders });
         }
 
         const url = new URL(request.url);
@@ -55,28 +73,24 @@ export default {
             return new Response(`Yahoo API Error: ${yahooResponse.status}`, { status: 502, headers: corsHeaders });
         }
 
-        const data = (await yahooResponse.json()) as {
-            result?: {
-                word?: Array<{
-                    surface?: string;
-                    furigana?: string;
-                    subword?: Array<{ surface?: string; furigana?: string }>;
-                }>;
-            };
-        };
+        const rawData = await yahooResponse.json();
+        const parseResult = YahooFuriganaResponseSchema.safeParse(rawData);
 
-        const words = data.result?.word ?? [];
+        const words = parseResult.success ? (parseResult.data.result?.word ?? []) : [];
+        if (!parseResult.success) {
+            console.error("Yahoo API response validation failed:", parseResult.error);
+        }
         const reading = words
-            .map((word) => {
+            .map(word => {
                 if (typeof word.furigana === "string" && word.furigana.length > 0) {
                     return word.furigana;
                 }
                 if (Array.isArray(word.subword) && word.subword.length > 0) {
                     return word.subword
-                        .map((sub) =>
-                            typeof sub.furigana === "string" && sub.furigana.length > 0
-                                ? sub.furigana
-                                : (sub.surface ?? ""),
+                        .map(sub =>
+                            typeof sub.furigana === "string" && sub.furigana.length > 0 ?
+                                sub.furigana :
+                                (sub.surface ?? "")
                         )
                         .join("");
                 }
@@ -84,7 +98,7 @@ export default {
             })
             .join("");
 
-        const response = new Response(JSON.stringify({ furigana: reading }), {
+        const response = new Response(JSON.stringify({ result: { word: words }, furigana: reading }), {
             headers: {
                 ...corsHeaders,
                 "Content-Type": "application/json",

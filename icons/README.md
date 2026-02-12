@@ -4,8 +4,8 @@
 
 必要なファイル：
 
--   icon16.png (16x16px)
--   icon48.png (48x48px)
--   icon128.png (128x128px)
+- icon16.png (16x16px)
+- icon48.png (48x48px)
+- icon128.png (128x128px)
 
 アイコンがない場合でも拡張機能は動作しますが、デフォルトアイコンが表示されます。

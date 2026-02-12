@@ -1,0 +1,20 @@
+{
+    "rules": {
+        "correctness": "warn",
+        "suspicious": "warn",
+        "perf": "warn",
+        "style": "off"
+    },
+    "env": {
+        "browser": true,
+        "es2021": true
+    },
+    "globals": {
+        "chrome": "readonly",
+        "browser": "readonly",
+        "defineContentScript": "readonly",
+        "defineBackground": "readonly",
+        "ExecutionContext": "readonly",
+        "caches": "readonly"
+    }
+}

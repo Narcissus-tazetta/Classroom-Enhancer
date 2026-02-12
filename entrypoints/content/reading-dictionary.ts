@@ -1,46 +1,48 @@
 import * as wanakana from "wanakana";
+import { CacheEntry, CacheEntrySchema, FuriganaResponseSchema } from "../../lib/schemas";
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const CACHE_PREFIX = "furigana:";
-const memoryCache = new Map<string, { value: string; ts: number }>();
+const memoryCache = new Map<string, CacheEntry>();
 
-function isValidCacheEntry(entry: unknown): entry is { value: string; ts: number } {
-    if (!entry || typeof entry !== "object") {
-        return false;
-    }
-    const typed = entry as { value?: unknown; ts?: unknown };
-    return typeof typed.value === "string" && typeof typed.ts === "number";
-}
-
-async function getStorageCache(key: string): Promise<{ value: string; ts: number } | null> {
-    return new Promise((resolve) => {
-        chrome.storage.local.get([key], (result) => {
+async function getStorageCache(key: string): Promise<CacheEntry | null> {
+    return new Promise(resolve => {
+        chrome.storage.local.get([key], result => {
             const entry = result[key];
-            if (!isValidCacheEntry(entry)) {
+            const parseResult = CacheEntrySchema.safeParse(entry);
+            if (!parseResult.success) {
+                console.warn("Invalid storage cache entry:", key);
                 resolve(null);
                 return;
             }
-            resolve(entry);
+            resolve(parseResult.data);
         });
     });
 }
 
-async function setStorageCache(key: string, entry: { value: string; ts: number }): Promise<void> {
-    return new Promise((resolve) => {
+async function setStorageCache(key: string, entry: CacheEntry): Promise<void> {
+    return new Promise(resolve => {
         chrome.storage.local.set({ [key]: entry }, () => resolve());
     });
 }
 
-function getMemoryCache(key: string): { value: string; ts: number } | null {
+function getMemoryCache(key: string): CacheEntry | null {
     const entry = memoryCache.get(key);
     if (!entry) {
         return null;
     }
-    if (Date.now() - entry.ts > CACHE_TTL_MS) {
+
+    const parseResult = CacheEntrySchema.safeParse(entry);
+    if (!parseResult.success) {
         memoryCache.delete(key);
         return null;
     }
-    return entry;
+
+    if (Date.now() - parseResult.data.ts > CACHE_TTL_MS) {
+        memoryCache.delete(key);
+        return null;
+    }
+    return parseResult.data;
 }
 
 function setMemoryCache(key: string, value: string): void {
@@ -53,12 +55,20 @@ async function requestFurigana(text: string): Promise<string | null> {
     try {
         const response = await fetch(`${API_URL}?q=${encodeURIComponent(text)}`);
 
-        if (!response.ok) return null;
+        if (!response.ok) {
+            return null;
+        }
 
-        const data = await response.json();
+        const rawData = await response.json();
+        const parseResult = FuriganaResponseSchema.safeParse(rawData);
 
-        if (data.result && data.result.word) {
-            return data.result.word.map((w: any) => w.roman || w.surface).join("");
+        if (!parseResult.success) {
+            console.error("API response validation failed:", parseResult.error);
+            return null;
+        }
+
+        if (parseResult.data.result?.word) {
+            return parseResult.data.result.word.map(w => w.roman ?? w.surface ?? "").join("");
         }
 
         return null;
@@ -69,7 +79,7 @@ async function requestFurigana(text: string): Promise<string | null> {
 }
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
     let timeoutId: number | undefined;
-    const timeoutPromise = new Promise<null>((resolve) => {
+    const timeoutPromise = new Promise<null>(resolve => {
         timeoutId = window.setTimeout(() => resolve(null), timeoutMs);
     });
     const result = await Promise.race([promise, timeoutPromise]);

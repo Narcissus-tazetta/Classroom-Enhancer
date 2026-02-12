@@ -1,9 +1,10 @@
 import { defineBackground } from "wxt/utils/define-background";
+import { CacheEntry, CacheEntrySchema, FuriganaMessageRequestSchema, FuriganaResponseSchema } from "../../lib/schemas";
 
 const WORKER_URL = "https://classroom-enhancer.ibaragiakira2007.workers.dev/furigana";
 const TIMEOUT_MS = 5000;
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const cache = new Map<string, { value: string; ts: number }>();
+const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<string | null>>();
 
 async function fetchWithTimeout(input: RequestInfo, init: RequestInit, timeoutMs: number): Promise<Response> {
@@ -31,12 +32,15 @@ async function fetchFurigana(text: string): Promise<string | null> {
         return null;
     }
 
-    const data = (await response.json()) as { furigana?: unknown };
-    if (typeof data.furigana === "string" && data.furigana.length > 0) {
-        return data.furigana;
+    const rawData = await response.json();
+    const parseResult = FuriganaResponseSchema.safeParse(rawData);
+
+    if (!parseResult.success) {
+        console.error("Worker response validation failed:", parseResult.error);
+        return null;
     }
 
-    return null;
+    return parseResult.data.furigana || null;
 }
 
 function getCached(text: string): string | null {
@@ -44,11 +48,19 @@ function getCached(text: string): string | null {
     if (!entry) {
         return null;
     }
-    if (Date.now() - entry.ts > CACHE_TTL_MS) {
+
+    const parseResult = CacheEntrySchema.safeParse(entry);
+    if (!parseResult.success) {
+        console.warn("Invalid cache entry, removing:", text);
         cache.delete(text);
         return null;
     }
-    return entry.value;
+
+    if (Date.now() - parseResult.data.ts > CACHE_TTL_MS) {
+        cache.delete(text);
+        return null;
+    }
+    return parseResult.data.value;
 }
 
 function setCached(text: string, value: string): void {
@@ -57,11 +69,13 @@ function setCached(text: string, value: string): void {
 
 export default defineBackground(() => {
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-        if (!message || message.type !== "furigana") {
+        const parseResult = FuriganaMessageRequestSchema.safeParse(message);
+        if (!parseResult.success) {
+            console.warn("Invalid message format:", parseResult.error);
             return;
         }
 
-        const text = typeof message.text === "string" ? message.text.normalize("NFKC").trim() : "";
+        const text = parseResult.data.text.normalize("NFKC").trim();
         if (!text) {
             sendResponse({ furigana: "" });
             return;
@@ -76,7 +90,7 @@ export default defineBackground(() => {
         let pending = inflight.get(text);
         if (!pending) {
             pending = fetchFurigana(text)
-                .then((furigana) => {
+                .then(furigana => {
                     if (furigana) {
                         setCached(text, furigana);
                     }
@@ -87,7 +101,7 @@ export default defineBackground(() => {
         }
 
         pending
-            .then((furigana) => sendResponse({ furigana: furigana ?? "" }))
+            .then(furigana => sendResponse({ furigana: furigana ?? "" }))
             .catch(() => sendResponse({ furigana: "" }));
 
         return true;

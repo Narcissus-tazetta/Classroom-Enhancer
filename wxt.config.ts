@@ -2,14 +2,18 @@ import { defineConfig } from "wxt";
 import common from "./manifest.common.json";
 import pkg from "./package.json";
 
-function mergeManifests(base: any, override: any) {
-    const out = JSON.parse(JSON.stringify(base));
+type ManifestObject = Record<string, unknown>;
+
+function mergeManifests(base: ManifestObject, override: ManifestObject | null): ManifestObject {
+    const out = JSON.parse(JSON.stringify(base)) as ManifestObject;
     for (const k of Object.keys(override || {})) {
-        const v = override[k];
+        const v = override?.[k];
         if (Array.isArray(v)) {
-            out[k] = Array.from(new Set([...(out[k] || []), ...v]));
+            const baseArray = Array.isArray(out[k]) ? (out[k] as unknown[]) : [];
+            out[k] = Array.from(new Set([...baseArray, ...v]));
         } else if (typeof v === "object" && v !== null) {
-            out[k] = Object.assign({}, out[k] || {}, v);
+            const baseObj = typeof out[k] === "object" && out[k] !== null ? (out[k] as ManifestObject) : {};
+            out[k] = Object.assign({}, baseObj, v as ManifestObject);
         } else {
             out[k] = v;
         }

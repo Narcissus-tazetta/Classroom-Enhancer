@@ -1,5 +1,7 @@
+import { DropdownUsage, DropdownUsageSchema } from "../../lib/schemas";
+
 export class DropdownUsageTracker {
-    private usage: Record<string, number> = {};
+    private usage: DropdownUsage = {};
     private observer: MutationObserver | null = null;
     private processedItems = new WeakSet<HTMLElement>();
     private reorderedDropdowns = new WeakSet<HTMLElement>();
@@ -26,15 +28,35 @@ export class DropdownUsageTracker {
         try {
             const data = localStorage.getItem("gc_dropdown_usage");
             if (data) {
-                this.usage = JSON.parse(data);
+                const parsed = JSON.parse(data);
+                const parseResult = DropdownUsageSchema.safeParse(parsed);
+
+                if (parseResult.success) {
+                    this.usage = parseResult.data;
+                } else {
+                    console.warn("Invalid dropdown usage data, resetting:", parseResult.error);
+                    this.usage = {};
+                    // 自動マイグレーション: もし旧形式を変換可能ならここに追加
+                    // 現状は単純にリセット
+                }
             }
-        } catch {}
+        } catch (error) {
+            console.error("Failed to load usage data:", error);
+        }
     }
 
     private saveUsage(): void {
         try {
-            localStorage.setItem("gc_dropdown_usage", JSON.stringify(this.usage));
-        } catch {}
+            // 保存前に検証
+            const parseResult = DropdownUsageSchema.safeParse(this.usage);
+            if (!parseResult.success) {
+                console.error("Invalid usage data before save:", parseResult.error);
+                return;
+            }
+            localStorage.setItem("gc_dropdown_usage", JSON.stringify(parseResult.data));
+        } catch (error) {
+            console.error("Failed to save usage data:", error);
+        }
     }
 
     private getKey(element: HTMLElement): string {
@@ -49,7 +71,9 @@ export class DropdownUsageTracker {
     private incrementUsage(element: HTMLElement): void {
         try {
             const key = this.getKey(element);
-            if (!key) return;
+            if (!key) {
+                return;
+            }
             this.usage[key] = (this.usage[key] || 0) + 1;
             this.saveUsage();
         } catch {}
@@ -58,7 +82,9 @@ export class DropdownUsageTracker {
     private reorderDropdown(dropdown: HTMLElement): void {
         try {
             const items = Array.from(dropdown.querySelectorAll('[role="option"], [role="menuitem"]')) as HTMLElement[];
-            if (items.length <= 3) return;
+            if (items.length <= 3) {
+                return;
+            }
 
             const scored = items.map((el, index) => ({
                 el,
@@ -66,7 +92,9 @@ export class DropdownUsageTracker {
                 originalIndex: index,
             }));
 
-            if (!scored.some((s) => s.score > 0)) return;
+            if (!scored.some(s => s.score > 0)) {
+                return;
+            }
 
             scored.sort((a, b) => (b.score !== a.score ? b.score - a.score : a.originalIndex - b.originalIndex));
 
@@ -80,7 +108,7 @@ export class DropdownUsageTracker {
     }
 
     private startObserver(): void {
-        this.observer = new MutationObserver((mutations) => {
+        this.observer = new MutationObserver(mutations => {
             for (const mutation of mutations) {
                 if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
                     for (const node of Array.from(mutation.addedNodes)) {
@@ -88,7 +116,7 @@ export class DropdownUsageTracker {
                             const element = node as HTMLElement;
                             this.checkAndSetupDropdown(element);
                             const dropdowns = element.querySelectorAll('[role="listbox"], [role="menu"]');
-                            dropdowns.forEach((dd) => this.checkAndSetupDropdown(dd as HTMLElement));
+                            dropdowns.forEach(dd => this.checkAndSetupDropdown(dd as HTMLElement));
                         }
                     }
                 }
@@ -103,7 +131,7 @@ export class DropdownUsageTracker {
 
     private processExistingDropdowns(): void {
         const dropdowns = document.querySelectorAll('[role="listbox"], [role="menu"]');
-        dropdowns.forEach((dd) => this.checkAndSetupDropdown(dd as HTMLElement));
+        dropdowns.forEach(dd => this.checkAndSetupDropdown(dd as HTMLElement));
     }
 
     private checkAndSetupDropdown(element: HTMLElement): void {
@@ -117,8 +145,10 @@ export class DropdownUsageTracker {
     private setupDropdown(dropdown: HTMLElement): void {
         const items = dropdown.querySelectorAll('[role="option"], [role="menuitem"]');
 
-        items.forEach((item) => {
-            if (this.processedItems.has(item as HTMLElement)) return;
+        items.forEach(item => {
+            if (this.processedItems.has(item as HTMLElement)) {
+                return;
+            }
 
             item.addEventListener(
                 "mousedown",

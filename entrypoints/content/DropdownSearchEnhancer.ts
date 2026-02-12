@@ -1,7 +1,7 @@
 import * as wanakana from "wanakana";
-import { NormalizedItem } from "./types";
-import { ROMAJI_REPLACEMENTS, DROPDOWN_SELECTORS, ITEM_SELECTORS } from "./constants";
+import { DROPDOWN_SELECTORS, ITEM_SELECTORS, ROMAJI_REPLACEMENTS } from "./constants";
 import { getReadingWithFallback } from "./reading-dictionary";
+import { NormalizedItem } from "./types";
 
 export class DropdownSearchEnhancer {
     private observer: MutationObserver | null = null;
@@ -28,7 +28,7 @@ export class DropdownSearchEnhancer {
         setInterval(() => {
             const allListboxes = document.querySelectorAll('ul[role="listbox"]');
             if (allListboxes.length > 0) {
-                allListboxes.forEach((lb) => {
+                allListboxes.forEach(lb => {
                     const listbox = lb as HTMLElement;
                     if (this.enhancedDropdowns.has(listbox)) {
                         return;
@@ -43,7 +43,7 @@ export class DropdownSearchEnhancer {
     }
 
     private startObserver(): void {
-        this.observer = new MutationObserver((mutations) => {
+        this.observer = new MutationObserver(mutations => {
             for (const mutation of mutations) {
                 if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
                     for (const node of Array.from(mutation.addedNodes)) {
@@ -72,9 +72,9 @@ export class DropdownSearchEnhancer {
 
     private enhanceDropdownsInNode(node: HTMLElement): void {
         for (const selector of DROPDOWN_SELECTORS) {
-            const dropdowns = node.matches?.(selector)
-                ? [node]
-                : Array.from(node.querySelectorAll<HTMLElement>(selector));
+            const dropdowns = node.matches?.(selector) ?
+                [node] :
+                Array.from(node.querySelectorAll<HTMLElement>(selector));
 
             for (const dropdown of dropdowns) {
                 if (!this.enhancedDropdowns.has(dropdown) && this.isValidDropdown(dropdown)) {
@@ -87,11 +87,17 @@ export class DropdownSearchEnhancer {
 
     private isValidDropdown(dropdown: HTMLElement): boolean {
         const items = this.getDropdownItems(dropdown);
-        if (items.length <= 3) return false;
+        if (items.length <= 3) {
+            return false;
+        }
 
-        if (this.isPersistentContainer(dropdown)) return false;
+        if (this.isPersistentContainer(dropdown)) {
+            return false;
+        }
 
-        if (!this.isOverlayDropdown(dropdown)) return false;
+        if (!this.isOverlayDropdown(dropdown)) {
+            return false;
+        }
 
         return true;
     }
@@ -105,10 +111,12 @@ export class DropdownSearchEnhancer {
             let el: HTMLElement | null = dropdown;
             while (el && el !== document.body) {
                 const pos = window.getComputedStyle(el).position;
-                if (pos === "absolute" || pos === "fixed" || pos === "sticky") return true;
+                if (pos === "absolute" || pos === "fixed" || pos === "sticky") {
+                    return true;
+                }
                 el = el.parentElement;
             }
-        } catch (e) {
+        } catch {
             return false;
         }
         return false;
@@ -122,10 +130,11 @@ export class DropdownSearchEnhancer {
                 items.push(...found);
             }
         }
-        const allItems =
-            items.length > 0 ? items : Array.from(dropdown.querySelectorAll<HTMLElement>('li, div[role="option"]'));
+        const allItems = items.length > 0 ?
+            items :
+            Array.from(dropdown.querySelectorAll<HTMLElement>('li, div[role="option"]'));
         return allItems.filter(
-            (item) => !item.hasAttribute("data-gc-search-item") && !item.querySelector(".gc-search-wrapper"),
+            item => !item.hasAttribute("data-gc-search-item") && !item.querySelector(".gc-search-wrapper"),
         );
     }
 
@@ -172,11 +181,9 @@ export class DropdownSearchEnhancer {
     }
 
     private setupSearchProtection(searchLi: HTMLElement, dropdown: HTMLElement): void {
-        const originalParent = dropdown;
-
         const protectElement = () => {
-            if (searchLi.parentElement !== originalParent) {
-                originalParent.insertBefore(searchLi, originalParent.firstChild);
+            if (searchLi.parentElement !== dropdown) {
+                dropdown.insertBefore(searchLi, dropdown.firstChild);
             }
             if (searchLi.getAttribute("role") !== "presentation") {
                 searchLi.setAttribute("role", "presentation");
@@ -186,13 +193,7 @@ export class DropdownSearchEnhancer {
             }
             const wrapper = searchLi.querySelector(".gc-search-wrapper");
             if (!wrapper) {
-                searchLi.innerHTML = "";
-                const newSearchEl = this.createSearchElement();
-                Array.from(newSearchEl.childNodes).forEach((node) => searchLi.appendChild(node));
-                const newInput = searchLi.querySelector(".gc-search-input") as HTMLInputElement;
-                if (newInput) {
-                    this.setupSearchHandlers(newInput, dropdown);
-                }
+                this.restoreSearchElement(searchLi, dropdown);
             }
         };
 
@@ -208,6 +209,16 @@ export class DropdownSearchEnhancer {
         });
     }
 
+    private restoreSearchElement(searchLi: HTMLElement, dropdown: HTMLElement): void {
+        searchLi.innerHTML = "";
+        const newSearchEl = this.createSearchElement();
+        Array.from(newSearchEl.childNodes).forEach(node => searchLi.appendChild(node));
+        const newInput = searchLi.querySelector(".gc-search-input") as HTMLInputElement;
+        if (newInput) {
+            this.setupSearchHandlers(newInput, dropdown);
+        }
+    }
+
     private setupSearchHandlers(input: HTMLInputElement, dropdown: HTMLElement): void {
         const filterHandler = () => this.filterDropdown(dropdown, input);
 
@@ -220,7 +231,7 @@ export class DropdownSearchEnhancer {
             this.debounceTimers.set(dropdown, timer);
         });
 
-        input.addEventListener("keydown", (ev) => this.handleKeyboard(ev, dropdown));
+        input.addEventListener("keydown", ev => this.handleKeyboard(ev, dropdown));
     }
 
     private setupDropdownObserver(input: HTMLInputElement, dropdown: HTMLElement): void {
@@ -254,7 +265,7 @@ export class DropdownSearchEnhancer {
                 ...item.romajiVariants,
             ];
 
-            const isMatch = searchPatterns.some((pattern) => searchTargets.some((target) => target.includes(pattern)));
+            const isMatch = searchPatterns.some(pattern => searchTargets.some(target => target.includes(pattern)));
 
             if (isMatch) {
                 matched.add(item.element);
@@ -289,15 +300,15 @@ export class DropdownSearchEnhancer {
         patterns.add(romaji.toLowerCase());
 
         const romajiVariants = this.generateRomajiVariants(romaji.toLowerCase());
-        romajiVariants.forEach((v) => patterns.add(v));
+        romajiVariants.forEach(v => patterns.add(v));
 
         const tokens = this.tokenizeRomaji(normalized);
-        tokens.forEach((token) => {
+        tokens.forEach(token => {
             patterns.add(wanakana.toHiragana(token));
             patterns.add(wanakana.toKatakana(token));
         });
 
-        return Array.from(patterns).filter((p) => p.length > 0);
+        return Array.from(patterns).filter(p => p.length > 0);
     }
 
     private tokenizeRomaji(text: string): string[] {
@@ -357,26 +368,26 @@ export class DropdownSearchEnhancer {
     }
 
     private generateRomajiVariants(romaji: string): string[] {
-        const variants = new Set<string>([romaji]);
         const results = new Set<string>([romaji]);
 
         for (const [from, to] of ROMAJI_REPLACEMENTS) {
+            if (!romaji.includes(from)) {
+                continue;
+            }
+
             const currentResults = Array.from(results);
             for (const result of currentResults) {
-                if (result.includes(from)) {
-                    let temp = result;
-                    let index = 0;
-                    while ((index = temp.indexOf(from, index)) !== -1) {
-                        const replaced = temp.slice(0, index) + to + temp.slice(index + from.length);
-                        results.add(replaced);
-                        variants.add(replaced);
-                        index += from.length;
-                    }
+                let temp = result;
+                let index = 0;
+                while ((index = temp.indexOf(from, index)) !== -1) {
+                    const replaced = temp.slice(0, index) + to + temp.slice(index + from.length);
+                    results.add(replaced);
+                    index += from.length;
                 }
             }
         }
 
-        return Array.from(variants);
+        return Array.from(results);
     }
 
     private resetFilter(dropdown: HTMLElement): void {
@@ -405,7 +416,7 @@ export class DropdownSearchEnhancer {
         }
 
         const walker = document.createTreeWalker(item, NodeFilter.SHOW_TEXT, {
-            acceptNode: (node) => {
+            acceptNode: node => {
                 if (node.parentElement?.closest(".gc-highlight")) {
                     return NodeFilter.FILTER_REJECT;
                 }
@@ -430,14 +441,18 @@ export class DropdownSearchEnhancer {
                 const after = text.substring(index + query.length);
 
                 const fragment = document.createDocumentFragment();
-                if (before) fragment.appendChild(document.createTextNode(before));
+                if (before) {
+                    fragment.appendChild(document.createTextNode(before));
+                }
 
                 const highlight = document.createElement("span");
                 highlight.className = "gc-highlight";
                 highlight.textContent = match;
                 fragment.appendChild(highlight);
 
-                if (after) fragment.appendChild(document.createTextNode(after));
+                if (after) {
+                    fragment.appendChild(document.createTextNode(after));
+                }
 
                 textNode.parentNode?.replaceChild(fragment, textNode);
             }
@@ -455,21 +470,27 @@ export class DropdownSearchEnhancer {
     }
 
     private handleKeyboard(ev: KeyboardEvent, dropdown: HTMLElement): void {
-        const items = this.getDropdownItems(dropdown).filter((item) => item.offsetParent !== null);
-        if (items.length === 0) return;
+        const items = this.getDropdownItems(dropdown).filter(item => item.offsetParent !== null);
+        if (items.length === 0) {
+            return;
+        }
 
         const active = dropdown.querySelector<HTMLElement>(".gc-active");
         let currentIndex = active ? items.indexOf(active) : -1;
 
         if (ev.key === "ArrowDown") {
             ev.preventDefault();
-            if (active) active.classList.remove("gc-active");
+            if (active) {
+                active.classList.remove("gc-active");
+            }
             currentIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
             items[currentIndex].classList.add("gc-active");
             items[currentIndex].scrollIntoView({ block: "nearest", behavior: "smooth" });
         } else if (ev.key === "ArrowUp") {
             ev.preventDefault();
-            if (active) active.classList.remove("gc-active");
+            if (active) {
+                active.classList.remove("gc-active");
+            }
             currentIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
             items[currentIndex].classList.add("gc-active");
             items[currentIndex].scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -481,7 +502,9 @@ export class DropdownSearchEnhancer {
     }
 
     private injectStyles(): void {
-        if (document.getElementById("gc-search-styles")) return;
+        if (document.getElementById("gc-search-styles")) {
+            return;
+        }
 
         const style = document.createElement("style");
         style.id = "gc-search-styles";

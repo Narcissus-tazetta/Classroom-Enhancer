@@ -1,5 +1,21 @@
 import { CLASSROOM_PATTERNS, TARGET_SELECTORS } from "./constants";
 
+const CLEANUP_PATTERNS = [
+    { regex: /20\d{2}(?:年(?:度)?|年度?)[_＿\s]*/g, replacement: "" },
+    { regex: /^20\d{2}[_＿\s]+/g, replacement: "" },
+    { regex: /ワークシート/g, replacement: "" },
+    { regex: /シート$/g, replacement: "" },
+    { regex: /\bWS\b/g, replacement: "" },
+    { regex: /資料[＆&]?/g, replacement: "" },
+    { regex: /配布資料/g, replacement: "" },
+    { regex: /解説資料/g, replacement: "" },
+    { regex: /授業用資料/g, replacement: "" },
+    { regex: /その他/g, replacement: "" },
+    { regex: /アーカイブ/g, replacement: "" },
+] as const;
+
+const EMPTY_BRACKETS_PATTERNS = [/\(\s*\)/g, /（\s*）/g, /【\s*】/g, /\[\s*\]/g] as const;
+
 export class ClassroomTextProcessor {
     private observer: MutationObserver | null = null;
     private pendingElements = new Set<HTMLElement>();
@@ -23,9 +39,8 @@ export class ClassroomTextProcessor {
     private start(): void {
         // Classroomは遅延描画/再レンダが多いので、初期は複数回走らせて取りこぼしを減らす
         this.processAll();
-        setTimeout(() => this.processAll(), 500);
-        setTimeout(() => this.processAll(), 1500);
-        setTimeout(() => this.processAll(), 3000);
+        const delays = [500, 1500, 3000];
+        delays.forEach(delay => setTimeout(() => this.processAll(), delay));
         this.startRecheckLoop();
         this.startObserver();
     }
@@ -33,7 +48,9 @@ export class ClassroomTextProcessor {
     private startRecheckLoop(): void {
         // Firefoxでは授業タブの一覧が遅延で再レンダリングされ、こちらの書き換えが戻されることがある。
         // 永続的なsetIntervalは重いので、短時間だけ再適用する。
-        if (this.recheckIntervalId != null) return;
+        if (this.recheckIntervalId != null) {
+            return;
+        }
 
         this.recheckIntervalId = window.setInterval(() => {
             this.processAll();
@@ -89,7 +106,9 @@ export class ClassroomTextProcessor {
                             .substring(sangaIndex + 3)
                             .replace(/.*投稿しました\.?/, "")
                             .trim();
-                        if (afterSanga.length > 0) text = afterSanga;
+                        if (afterSanga.length > 0) {
+                            text = afterSanga;
+                        }
                     }
                 }
             }
@@ -99,19 +118,19 @@ export class ClassroomTextProcessor {
     }
 
     private startObserver(): void {
-        this.observer = new MutationObserver((mutationsList) => {
+        this.observer = new MutationObserver(mutationsList => {
             let hasChanges = false;
 
             for (const mutation of mutationsList) {
                 if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
-                    mutation.addedNodes.forEach((node) => {
+                    mutation.addedNodes.forEach(node => {
                         if (node.nodeType === Node.ELEMENT_NODE) {
                             const element = node as HTMLElement;
 
                             this.pendingElements.add(element);
 
                             const children = element.querySelectorAll(TARGET_SELECTORS.join(","));
-                            children.forEach((child) => this.pendingElements.add(child as HTMLElement));
+                            children.forEach(child => this.pendingElements.add(child as HTMLElement));
 
                             hasChanges = true;
                         }
@@ -147,7 +166,7 @@ export class ClassroomTextProcessor {
     }
 
     private processPendingElements(): void {
-        this.pendingElements.forEach((element) => {
+        this.pendingElements.forEach(element => {
             this.checkAndProcess(element);
         });
         this.pendingElements.clear();
@@ -155,13 +174,15 @@ export class ClassroomTextProcessor {
 
     private processAll(): void {
         const targets = document.querySelectorAll(TARGET_SELECTORS.join(","));
-        targets.forEach((element) => {
+        targets.forEach(element => {
             this.checkAndProcess(element as HTMLElement);
         });
     }
 
     private checkAndProcess(element: HTMLElement): void {
-        if (!element.isConnected) return;
+        if (!element.isConnected) {
+            return;
+        }
 
         if (this.isInteractiveOrIconElement(element)) {
             return;
@@ -171,12 +192,18 @@ export class ClassroomTextProcessor {
 
         if (hasInteractiveDescendants) {
             const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
-                acceptNode: (node) => {
+                acceptNode: node => {
                     const textNode = node as Text;
                     const parent = textNode.parentElement;
-                    if (!parent) return NodeFilter.FILTER_REJECT;
-                    if (this.isInteractiveOrIconElement(parent)) return NodeFilter.FILTER_REJECT;
-                    if (parent.closest('.material-icons, [class*="material-icons"]')) return NodeFilter.FILTER_REJECT;
+                    if (!parent) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    if (this.isInteractiveOrIconElement(parent)) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    if (parent.closest('.material-icons, [class*="material-icons"]')) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
                     return NodeFilter.FILTER_ACCEPT;
                 },
             });
@@ -185,8 +212,12 @@ export class ClassroomTextProcessor {
             let textNode: Text | null;
             while ((textNode = walker.nextNode() as Text | null)) {
                 const raw = textNode.nodeValue || "";
-                if (raw.trim().length < 3) continue;
-                if (!this.needsCleanup(raw)) continue;
+                if (raw.trim().length < 3) {
+                    continue;
+                }
+                if (!this.needsCleanup(raw)) {
+                    continue;
+                }
 
                 const cleaned = this.extractAndCleanupText(raw);
                 if (cleaned !== raw) {
@@ -203,7 +234,9 @@ export class ClassroomTextProcessor {
         }
 
         const currentText = element.textContent || "";
-        if (currentText.length < 3) return;
+        if (currentText.length < 3) {
+            return;
+        }
 
         if (this.processedElements.has(element) && !this.needsCleanup(currentText)) {
             return;
@@ -233,31 +266,28 @@ export class ClassroomTextProcessor {
     }
 
     private cleanupText(text: string): string {
-        if (!text) return "";
+        if (!text) {
+            return "";
+        }
 
-        // 年度の削除（2025年_ / 2025年度_ / 2025_ など）
-        text = text.replace(/20\d{2}(?:年(?:度)?|年度?)[_＿\s]*/g, "");
-        text = text.replace(/^20\d{2}[_＿\s]+/g, "");
-        text = text.replace(/ワークシート/g, "");
-        text = text.replace(/シート$/g, "");
-        text = text.replace(/\bWS\b/g, "");
-        text = text.replace(/資料[＆&]?/g, "");
-        text = text.replace(/配布資料/g, "");
-        text = text.replace(/解説資料/g, "");
-        text = text.replace(/授業用資料/g, "");
-        text = text.replace(/その他/g, "");
-        text = text.replace(/アーカイブ/g, "");
+        let result = text;
 
-        text = text.replace(/[_＿\s]{2,}/g, " ");
-        text = text.replace(/^[_＿\s]+/, "");
-        text = text.replace(/[_＿\s]+$/, "");
+        // 定義済みパターンで置換
+        for (const { regex, replacement } of CLEANUP_PATTERNS) {
+            result = result.replace(regex, replacement);
+        }
 
-        text = text.replace(/\(\s*\)/g, "");
-        text = text.replace(/（\s*）/g, "");
-        text = text.replace(/【\s*】/g, "");
-        text = text.replace(/\[\s*\]/g, "");
+        // 空白文字の正規化
+        result = result.replace(/[_＿\s]{2,}/g, " ");
+        result = result.replace(/^[_＿\s]+/, "");
+        result = result.replace(/[_＿\s]+$/, "");
 
-        return text.trim();
+        // 空括弧の削除
+        for (const pattern of EMPTY_BRACKETS_PATTERNS) {
+            result = result.replace(pattern, "");
+        }
+
+        return result.trim();
     }
 
     public destroy(): void {
