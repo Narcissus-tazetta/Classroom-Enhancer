@@ -1,6 +1,6 @@
 {
     "name": "classroom-enhancer",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "description": "Google ClassroomのUIの改善します",
     "private": true,
     "scripts": {

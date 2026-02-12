@@ -127,7 +127,7 @@ export class DropdownUsageTracker {
                         this.incrementUsage(item as HTMLElement);
                     } catch {}
                 },
-                true,
+                { capture: true, passive: true },
             );
             this.processedItems.add(item as HTMLElement);
         });

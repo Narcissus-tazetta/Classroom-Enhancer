@@ -1,0 +1,5 @@
+name = "classroom-enhancer"
+main = "workers/yahoo-furigana-worker.ts"
+compatibility_date = "2026-02-12"
+
+[vars]

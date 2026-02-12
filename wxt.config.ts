@@ -18,7 +18,7 @@ function mergeManifests(base: any, override: any) {
 }
 
 export default defineConfig({
-    manifestVersion: ({ browser }) => (browser === "firefox" ? 2 : 3),
+    manifestVersion: 3,
     outDir: "dist",
 
     vite: () => {
@@ -45,7 +45,11 @@ export default defineConfig({
     manifest: ({ browser }) => {
         if (browser === "firefox") {
             return mergeManifests(common, {
-                permissions: ["storage", "https://classroom.google.com/*"],
+                permissions: [
+                    "storage",
+                    "https://classroom.google.com/*",
+                    "https://classroom-enhancer.ibaragiakira2007.workers.dev/*",
+                ],
                 browser_specific_settings: {
                     gecko: { id: "classroom-enhancer@narcissus-tazetta.github.io" },
                 },
@@ -54,7 +58,10 @@ export default defineConfig({
         }
         return mergeManifests(common, {
             permissions: ["activeTab", "scripting", "storage"],
-            host_permissions: ["https://classroom.google.com/*"],
+            host_permissions: [
+                "https://classroom.google.com/*",
+                "https://classroom-enhancer.ibaragiakira2007.workers.dev/*",
+            ],
             version: pkg.version,
         });
     },

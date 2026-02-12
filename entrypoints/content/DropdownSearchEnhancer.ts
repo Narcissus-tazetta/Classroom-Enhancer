@@ -328,9 +328,7 @@ export class DropdownSearchEnhancer {
         for (const el of items) {
             const text = this.getItemText(el);
             const normalizedText = text.normalize("NFKC");
-
-            const textWithReading = getReadingWithFallback(normalizedText);
-
+            const textWithReading = await getReadingWithFallback(normalizedText);
             const hiragana = wanakana.toHiragana(textWithReading);
             const allHiragana = this.extractAllHiraganaFromText(textWithReading);
             const finalHiragana = allHiragana || hiragana;
