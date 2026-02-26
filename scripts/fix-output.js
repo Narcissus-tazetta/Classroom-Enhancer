@@ -68,12 +68,40 @@ function identifyBrowser(folderName, manifest) {
     return null;
 }
 
+function scoreCandidate(folderName, manifest, browser) {
+    let score = 0;
+    if (manifest) {
+        score += 20;
+        if (manifest.manifest_version === 3 && browser === "chrome") {
+            score += 10;
+        }
+        if (manifest.manifest_version === 2 && browser === "firefox") {
+            score += 10;
+        }
+        if (manifest.action && browser === "chrome") {
+            score += 5;
+        }
+    }
+
+    if (folderName === `${browser}-mv3` || folderName === `${browser}-mv2`) {
+        score += 100;
+    }
+    if (folderName.includes("-mv")) {
+        score += 80;
+    }
+    if (folderName === browser) {
+        score += 40;
+    }
+
+    return score;
+}
+
 function reorganizeDist() {
     try {
         const folders = getBuiltFolders();
         console.log("Found folders:", folders);
 
-        const renames = {};
+        const candidates = { chrome: [], firefox: [] };
 
         for (const folder of folders) {
             const fullPath = path.join(distDir, folder);
@@ -96,8 +124,17 @@ function reorganizeDist() {
                 }
             }
 
-            if (!renames[browser]) {
-                renames[browser] = folder;
+            candidates[browser].push({
+                folder,
+                score: scoreCandidate(folder, manifest, browser),
+            });
+        }
+
+        const renames = {};
+        for (const browser of ["chrome", "firefox"]) {
+            const sorted = candidates[browser].sort((a, b) => b.score - a.score);
+            if (sorted.length > 0) {
+                renames[browser] = sorted[0].folder;
             }
         }
 
@@ -181,7 +218,7 @@ function patchManifests() {
             ) {
                 manifest.browser_specific_settings = manifest.browser_specific_settings || {};
                 manifest.browser_specific_settings.gecko = manifest.browser_specific_settings.gecko || {};
-                manifest.browser_specific_settings.gecko.id = "classroom-enhancer@narcissus-tazetta.github.io";
+                manifest.browser_specific_settings.gecko.id = "classroom-hide-author@example.com";
                 console.log(`Patched browser_specific_settings.gecko.id in ${mPath}`);
             }
 

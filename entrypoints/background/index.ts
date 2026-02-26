@@ -88,47 +88,39 @@ async function fetchFurigana(text: string): Promise<string | null> {
                 console.log("[DEBUG-BG] Parsed furigana (GET):", parseResult.data.furigana);
                 return parseResult.data.furigana || null;
             }
-
-            // ここでフォールバック: Worker が Yahoo の生レスポンスを返している可能性があるため
-            // rawData.result.word から読みを生成してみる
             try {
                 console.warn("[DEBUG-BG] Worker response validation failed (GET):", parseResult.error);
                 const yahooWords: any[] | undefined = rawData?.result?.word;
                 console.log("[DEBUG-BG] Yahoo-style word count:", Array.isArray(yahooWords) ? yahooWords.length : 0);
                 if (Array.isArray(yahooWords) && yahooWords.length > 0) {
-                    // sample shape のログ（最大3つ）
                     console.log(
                         "[DEBUG-BG] Yahoo word sample:",
-                        yahooWords.slice(0, 3).map((w) => (typeof w === "object" ? JSON.stringify(w) : String(w))),
+                        yahooWords.slice(0, 3).map(w => (typeof w === "object" ? JSON.stringify(w) : String(w))),
                     );
 
                     const reading = (yahooWords || [])
                         .map((word: any) => {
-                            // furigana が文字列
                             if (typeof word?.furigana === "string" && word.furigana.length > 0) {
                                 return word.furigana;
                             }
-                            // furigana が配列
                             if (Array.isArray(word?.furigana)) {
                                 return word.furigana.map((x: any) => String(x ?? "")).join("");
                             }
-                            // furigana がオブジェクト等
                             if (word && typeof word?.furigana === "object") {
                                 try {
                                     const flat = JSON.stringify(word.furigana);
                                     return flat;
-                                } catch {
-                                    // fallthrough
-                                }
+                                } catch {}
                             }
-                            // subword 対応
                             if (Array.isArray(word?.subword) && word.subword.length > 0) {
                                 return word.subword
                                     .map((sub: any) => {
-                                        if (typeof sub?.furigana === "string" && sub.furigana.length > 0)
+                                        if (typeof sub?.furigana === "string" && sub.furigana.length > 0) {
                                             return sub.furigana;
-                                        if (Array.isArray(sub?.furigana))
+                                        }
+                                        if (Array.isArray(sub?.furigana)) {
                                             return sub.furigana.map((x: any) => String(x ?? "")).join("");
+                                        }
                                         return sub.surface ?? "";
                                     })
                                     .join("");
@@ -216,14 +208,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     let pending = inflight.get(text);
     if (!pending) {
         pending = fetchFurigana(text)
-            .then((furigana) => {
+            .then(furigana => {
                 console.log("[DEBUG-BG] Fetch result:", text, "=>", furigana);
                 if (furigana) {
                     setCached(text, furigana);
                 }
                 return furigana;
             })
-            .catch((error) => {
+            .catch(error => {
                 console.error("[DEBUG-BG] Fetch error:", error);
                 return null;
             })
@@ -232,11 +224,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
 
     pending
-        .then((furigana) => {
+        .then(furigana => {
             console.log("[DEBUG-BG] Sending response:", furigana ?? "");
             sendResponse({ furigana: furigana ?? "" });
         })
-        .catch((error) => {
+        .catch(error => {
             console.error("[DEBUG-BG] Response error:", error);
             sendResponse({ furigana: "" });
         });

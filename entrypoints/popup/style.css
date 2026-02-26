@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+body {
+    margin: 0;
+}
+
+.popup-root {
+    --popup-bg: rgb(255 255 255);
+    --popup-card-bg: rgb(255 255 255);
+    --popup-subtle-bg: rgb(37 99 235 / 0.04);
+    --popup-border: rgb(226 232 240);
+    --popup-title: rgb(0 0 0);
+    --popup-text: rgb(51 65 85);
+    --popup-muted: rgb(100 116 139);
+    --popup-hover: rgb(0 0 0 / 0.05);
+    --popup-tooltip-bg: rgb(255 255 255);
+    --popup-button-border: rgb(0 0 0 / 0.3);
+    --popup-button-bg: rgb(0 0 0 / 0.05);
+    --popup-button-bg-hover: rgb(0 0 0 / 0.1);
+    --popup-button-text: rgb(0 0 0);
+    --popup-accent: rgb(37 99 235);
+    --popup-accent-soft: rgb(37 99 235 / 0.65);
+    --popup-accent-border: rgb(37 99 235 / 0.25);
+    --popup-toggle-on: rgb(37 99 235);
+    --popup-toggle-off-border: rgb(203 213 225);
+    --popup-toggle-off-bg: rgb(226 232 240);
+    --popup-brand-icon-bg: rgb(124 58 237 / 0.15);
+    --popup-brand-icon-text: rgb(124 58 237);
+}
+
+.popup-root[data-theme="dark"] {
+    --popup-bg: rgb(7 13 24);
+    --popup-card-bg: rgb(20 30 47);
+    --popup-subtle-bg: rgb(37 99 235 / 0.18);
+    --popup-border: rgb(112 132 162);
+    --popup-title: rgb(248 250 252);
+    --popup-text: rgb(248 250 252);
+    --popup-muted: rgb(217 226 240);
+    --popup-hover: rgb(248 250 252 / 0.14);
+    --popup-tooltip-bg: rgb(12 21 37);
+    --popup-button-border: rgb(226 232 240 / 0.36);
+    --popup-button-bg: rgb(226 232 240 / 0.12);
+    --popup-button-bg-hover: rgb(226 232 240 / 0.2);
+    --popup-button-text: rgb(248 250 252);
+    --popup-accent: rgb(125 180 255);
+    --popup-accent-soft: rgb(186 220 255);
+    --popup-accent-border: rgb(125 180 255 / 0.48);
+    --popup-toggle-on: rgb(59 130 246);
+    --popup-toggle-off-border: rgb(122 143 174);
+    --popup-toggle-off-bg: rgb(57 73 101);
+    --popup-brand-icon-bg: rgb(168 85 247 / 0.26);
+    --popup-brand-icon-text: rgb(221 189 255);
+}
+
+.popup-brand-font {
+    font-family: "Playwrite DE SAS", "Birthstone", "Fleur De Leah", cursive;
+}

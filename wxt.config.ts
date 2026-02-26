@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "wxt";
 import common from "./manifest.common.json";
 import pkg from "./package.json";
@@ -27,6 +28,7 @@ export default defineConfig({
 
     vite: () => {
         return {
+            plugins: [tailwindcss()],
             build: {
                 modulePreload: false,
                 minify: "esbuild",
@@ -55,7 +57,7 @@ export default defineConfig({
                     "https://classroom-enhancer.ibaragiakira2007.workers.dev/*",
                 ],
                 browser_specific_settings: {
-                    gecko: { id: "classroom-enhancer@narcissus-tazetta.github.io" },
+                    gecko: { id: "classroom-hide-author@example.com" },
                 },
                 version: pkg.version,
             });

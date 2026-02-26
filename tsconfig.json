@@ -8,6 +8,7 @@
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
         "moduleResolution": "bundler",
+        "jsx": "react-jsx",
         "resolveJsonModule": true,
         "declaration": false,
         "sourceMap": false,

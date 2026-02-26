@@ -1,31 +1,46 @@
+import { CleanupPatternFlags, DEFAULT_CLEANUP_PATTERN_FLAGS } from "../shared/settings";
 import { CLASSROOM_PATTERNS, TARGET_SELECTORS } from "./constants";
 
 const CLEANUP_PATTERNS = [
-    { regex: /20\d{2}(?:年(?:度)?|年度?)[_＿\s]*/g, replacement: "" },
-    { regex: /^20\d{2}[_＿\s]+/g, replacement: "" },
-    { regex: /ワークシート/g, replacement: "" },
-    { regex: /シート$/g, replacement: "" },
-    { regex: /\bWS\b/g, replacement: "" },
-    { regex: /資料[＆&]?/g, replacement: "" },
-    { regex: /配布資料/g, replacement: "" },
-    { regex: /解説資料/g, replacement: "" },
-    { regex: /授業用資料/g, replacement: "" },
-    { regex: /その他/g, replacement: "" },
-    { regex: /アーカイブ/g, replacement: "" },
+    { key: "removeYearPrefix", regex: /20\d{2}(?:年(?:度)?|年度?)[_＿\s]*/g, replacement: "" },
+    { key: "removeLeadingYear", regex: /^20\d{2}[_＿\s]+/g, replacement: "" },
+    { key: "removeWorksheetConnector", regex: /ワークシートと/g, replacement: "" },
+    { key: "removeWorksheet", regex: /ワークシート/g, replacement: "" },
+    { key: "removeSheetSuffix", regex: /シート$/g, replacement: "" },
+    { key: "removeGroupWS", regex: /グループWS/g, replacement: "" },
+    { key: "removeWS", regex: /\bWS\b/g, replacement: "" },
+    { key: "removeMaterial", regex: /資料[＆&]?/g, replacement: "" },
+    { key: "removeHandout", regex: /配布資料/g, replacement: "" },
+    { key: "removeGuide", regex: /解説資料/g, replacement: "" },
+    { key: "removeLessonMaterial", regex: /授業用資料/g, replacement: "" },
+    { key: "removeOther", regex: /その他/g, replacement: "" },
+    { key: "removeArchive", regex: /アーカイブ/g, replacement: "" },
+    { key: "removeUnderscoreBeforeBracket", regex: /[_＿]+(?=（)/g, replacement: "" },
 ] as const;
 
 const EMPTY_BRACKETS_PATTERNS = [/\(\s*\)/g, /（\s*）/g, /【\s*】/g, /\[\s*\]/g] as const;
 
 export class ClassroomTextProcessor {
+    private static globallyEnabled = true;
+    private static cleanupPatternFlags: CleanupPatternFlags = { ...DEFAULT_CLEANUP_PATTERN_FLAGS };
     private observer: MutationObserver | null = null;
     private pendingElements = new Set<HTMLElement>();
-    private processedElements = new WeakSet<HTMLElement>();
+    private originalTextByNode = new WeakMap<Text, string>();
+    private transformedTextNodes = new Set<Text>();
     private rafId: number | null = null;
     private recheckIntervalId: number | null = null;
     private recheckStopTimeoutId: number | null = null;
 
     constructor() {
         this.init();
+    }
+
+    public static setGlobalEnabled(enabled: boolean): void {
+        ClassroomTextProcessor.globallyEnabled = enabled;
+    }
+
+    public static setPatternFlags(flags: CleanupPatternFlags): void {
+        ClassroomTextProcessor.cleanupPatternFlags = { ...flags };
     }
 
     private init(): void {
@@ -37,9 +52,18 @@ export class ClassroomTextProcessor {
     }
 
     private start(): void {
+        if (!ClassroomTextProcessor.globallyEnabled) {
+            return;
+        }
         this.processAll();
         const delays = [500, 1500, 3000];
-        delays.forEach((delay) => setTimeout(() => this.processAll(), delay));
+        delays.forEach(delay =>
+            setTimeout(() => {
+                if (ClassroomTextProcessor.globallyEnabled) {
+                    this.processAll();
+                }
+            }, delay)
+        );
         this.startRecheckLoop();
         this.startObserver();
     }
@@ -50,6 +74,9 @@ export class ClassroomTextProcessor {
         }
 
         this.recheckIntervalId = window.setInterval(() => {
+            if (!ClassroomTextProcessor.globallyEnabled) {
+                return;
+            }
             this.processAll();
         }, 1000);
 
@@ -67,12 +94,6 @@ export class ClassroomTextProcessor {
             element.closest(
                 '[role="menu"], [role="menuitem"], [role="listbox"], [role="option"], button, [role="button"], input, textarea, select',
             ) || element.matches?.('.material-icons, [class*="material-icons"]')
-        );
-    }
-
-    private containsInteractiveOrIconDescendants(element: HTMLElement): boolean {
-        return !!element.querySelector(
-            'button, [role="button"], [role="menu"], [role="menuitem"], [role="listbox"], [role="option"], input, textarea, select, .material-icons, [class*="material-icons"]',
         );
     }
 
@@ -114,19 +135,22 @@ export class ClassroomTextProcessor {
     }
 
     private startObserver(): void {
-        this.observer = new MutationObserver((mutationsList) => {
+        this.observer = new MutationObserver(mutationsList => {
+            if (!ClassroomTextProcessor.globallyEnabled) {
+                return;
+            }
             let hasChanges = false;
 
             for (const mutation of mutationsList) {
                 if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
-                    mutation.addedNodes.forEach((node) => {
+                    mutation.addedNodes.forEach(node => {
                         if (node.nodeType === Node.ELEMENT_NODE) {
                             const element = node as HTMLElement;
 
                             this.pendingElements.add(element);
 
                             const children = element.querySelectorAll(TARGET_SELECTORS.join(","));
-                            children.forEach((child) => this.pendingElements.add(child as HTMLElement));
+                            children.forEach(child => this.pendingElements.add(child as HTMLElement));
 
                             hasChanges = true;
                         }
@@ -162,20 +186,30 @@ export class ClassroomTextProcessor {
     }
 
     private processPendingElements(): void {
-        this.pendingElements.forEach((element) => {
+        if (!ClassroomTextProcessor.globallyEnabled) {
+            this.pendingElements.clear();
+            return;
+        }
+        this.pendingElements.forEach(element => {
             this.checkAndProcess(element);
         });
         this.pendingElements.clear();
     }
 
     private processAll(): void {
+        if (!ClassroomTextProcessor.globallyEnabled) {
+            return;
+        }
         const targets = document.querySelectorAll(TARGET_SELECTORS.join(","));
-        targets.forEach((element) => {
+        targets.forEach(element => {
             this.checkAndProcess(element as HTMLElement);
         });
     }
 
     private checkAndProcess(element: HTMLElement): void {
+        if (!ClassroomTextProcessor.globallyEnabled) {
+            return;
+        }
         if (!element.isConnected) {
             return;
         }
@@ -184,68 +218,42 @@ export class ClassroomTextProcessor {
             return;
         }
 
-        const hasInteractiveDescendants = this.containsInteractiveOrIconDescendants(element);
-
-        if (hasInteractiveDescendants) {
-            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
-                acceptNode: (node) => {
-                    const textNode = node as Text;
-                    const parent = textNode.parentElement;
-                    if (!parent) {
-                        return NodeFilter.FILTER_REJECT;
-                    }
-                    if (this.isInteractiveOrIconElement(parent)) {
-                        return NodeFilter.FILTER_REJECT;
-                    }
-                    if (parent.closest('.material-icons, [class*="material-icons"]')) {
-                        return NodeFilter.FILTER_REJECT;
-                    }
-                    return NodeFilter.FILTER_ACCEPT;
-                },
-            });
-
-            let changed = false;
-            let textNode: Text | null;
-            while ((textNode = walker.nextNode() as Text | null)) {
-                const raw = textNode.nodeValue || "";
-                if (raw.trim().length < 3) {
-                    continue;
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+            acceptNode: node => {
+                const textNode = node as Text;
+                const parent = textNode.parentElement;
+                if (!parent) {
+                    return NodeFilter.FILTER_REJECT;
                 }
-                if (!this.needsCleanup(raw)) {
-                    continue;
+                if (this.isInteractiveOrIconElement(parent)) {
+                    return NodeFilter.FILTER_REJECT;
                 }
+                if (parent.closest('.material-icons, [class*="material-icons"]')) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                return NodeFilter.FILTER_ACCEPT;
+            },
+        });
 
+        let changed = false;
+        let textNode = walker.nextNode() as Text | null;
+        while (textNode) {
+            const raw = textNode.nodeValue || "";
+            if (raw.trim().length >= 3 && this.needsCleanup(raw)) {
                 const cleaned = this.extractAndCleanupText(raw);
                 if (cleaned !== raw) {
+                    if (!this.originalTextByNode.has(textNode)) {
+                        this.originalTextByNode.set(textNode, raw);
+                    }
                     textNode.nodeValue = cleaned;
+                    this.transformedTextNodes.add(textNode);
                     changed = true;
                 }
             }
-
-            if (changed) {
-                this.processedElements.add(element);
-                element.dataset.processedByHidePoster = "true";
-            }
-            return;
+            textNode = walker.nextNode() as Text | null;
         }
 
-        const currentText = element.textContent || "";
-        if (currentText.length < 3) {
-            return;
-        }
-
-        if (this.processedElements.has(element) && !this.needsCleanup(currentText)) {
-            return;
-        }
-
-        if (!this.needsCleanup(currentText)) {
-            return;
-        }
-
-        const cleaned = this.extractAndCleanupText(currentText);
-        if (cleaned !== currentText && element.textContent !== cleaned) {
-            element.textContent = cleaned;
-            this.processedElements.add(element);
+        if (changed) {
             element.dataset.processedByHidePoster = "true";
         }
     }
@@ -268,7 +276,10 @@ export class ClassroomTextProcessor {
 
         let result = text;
 
-        for (const { regex, replacement } of CLEANUP_PATTERNS) {
+        for (const { key, regex, replacement } of CLEANUP_PATTERNS) {
+            if (!ClassroomTextProcessor.cleanupPatternFlags[key]) {
+                continue;
+            }
             result = result.replace(regex, replacement);
         }
 
@@ -283,12 +294,23 @@ export class ClassroomTextProcessor {
         return result.trim();
     }
 
-    public destroy(): void {
+    private restoreOriginalText(): void {
+        for (const node of Array.from(this.transformedTextNodes)) {
+            const original = this.originalTextByNode.get(node);
+            if (typeof original === "string") {
+                node.nodeValue = original;
+            }
+            this.transformedTextNodes.delete(node);
+        }
+        this.pendingElements.clear();
+    }
+
+    public destroy(restore = false): void {
         if (this.observer) {
             this.observer.disconnect();
             this.observer = null;
         }
-        if (this.rafId) {
+        if (this.rafId != null) {
             cancelAnimationFrame(this.rafId);
             this.rafId = null;
         }
@@ -299,6 +321,9 @@ export class ClassroomTextProcessor {
         if (this.recheckStopTimeoutId != null) {
             window.clearTimeout(this.recheckStopTimeoutId);
             this.recheckStopTimeoutId = null;
+        }
+        if (restore) {
+            this.restoreOriginalText();
         }
     }
 }

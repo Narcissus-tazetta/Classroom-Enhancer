@@ -1,4 +1,7 @@
 node_modules/
+.vite-cache/
+.wxt/
+.wrangler/
 dist/
 build/
 *.log

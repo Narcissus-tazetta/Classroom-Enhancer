@@ -6,8 +6,8 @@ const CACHE_PREFIX = "furigana:";
 const memoryCache = new Map<string, CacheEntry>();
 
 async function getStorageCache(key: string): Promise<CacheEntry | null> {
-    return new Promise((resolve) => {
-        chrome.storage.local.get([key], (result) => {
+    return new Promise(resolve => {
+        chrome.storage.local.get([key], result => {
             const entry = result[key];
             const parseResult = CacheEntrySchema.safeParse(entry);
             if (!parseResult.success) {
@@ -20,7 +20,7 @@ async function getStorageCache(key: string): Promise<CacheEntry | null> {
 }
 
 async function setStorageCache(key: string, entry: CacheEntry): Promise<void> {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
         chrome.storage.local.set({ [key]: entry }, () => resolve());
     });
 }
@@ -49,8 +49,8 @@ function setMemoryCache(key: string, value: string): void {
 }
 
 async function clearInvalidCache(): Promise<void> {
-    return new Promise((resolve) => {
-        chrome.storage.local.get(null, (allItems) => {
+    return new Promise(resolve => {
+        chrome.storage.local.get(null, allItems => {
             const invalidKeys: string[] = [];
             for (const [key, value] of Object.entries(allItems)) {
                 if (key.startsWith(CACHE_PREFIX)) {
@@ -87,7 +87,7 @@ async function requestFurigana(text: string): Promise<string | null> {
                 return parseResult.data.furigana;
             }
             if (parseResult.data.result?.word) {
-                return parseResult.data.result.word.map((w) => w.roman ?? w.surface ?? "").join("");
+                return parseResult.data.result.word.map(w => w.roman ?? w.surface ?? "").join("");
             }
             return null;
         }
@@ -137,7 +137,7 @@ async function requestFurigana(text: string): Promise<string | null> {
 }
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
     let timeoutId: number | undefined;
-    const timeoutPromise = new Promise<null>((resolve) => {
+    const timeoutPromise = new Promise<null>(resolve => {
         timeoutId = window.setTimeout(() => resolve(null), timeoutMs);
     });
     const result = await Promise.race([promise, timeoutPromise]);
